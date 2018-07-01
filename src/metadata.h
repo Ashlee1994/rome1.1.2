@@ -346,11 +346,20 @@ public:
         assert(MetaDataElemsName.size()==MetaDataElemsType.size());
         assert(MetaDataElemsType.size()==MetaDataElems.size());
         os << tableName <<std::endl<<std::endl<<"loop_"<<std::endl;
+		int ScaleCorrectionIndex = 0; // remove rlnScaleCorrection
         for (int i = 0; i < MetaDataElemsName.size(); i++) {
-            os << "_rln"<<MetaDataElemsName[i]<<" #"<<std::to_string((long long)i+1)<<std::endl;
+			if (MetaDataElemsName[i].compare("ScaleCorrection") == 0) { // remove rlnScaleCorrection
+				ScaleCorrectionIndex = i;
+				continue;
+			}
+			else if (i > ScaleCorrectionIndex)
+				os << "_rln" << MetaDataElemsName[i] << " #" << std::to_string((long long)i) << std::endl;
+			else
+				os << "_rln" << MetaDataElemsName[i] << " #" << std::to_string((long long)i + 1) << std::endl;
         }
         for (int metadataIndex = 0; metadataIndex < MetaDataElemsNumber; metadataIndex++) {
             for (int i = 0; i < MetaDataElems.size(); i++) {
+				if (i == ScaleCorrectionIndex)  continue;
                 switch (MetaDataElemsType[i]) {
                     case ElemTypeChar: {
                         auto string_ptr = (std::string**)MetaDataElems[i];
