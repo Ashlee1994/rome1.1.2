@@ -1,0 +1,48 @@
+
+----------------------------------------------------------------------
+INSTALLATION VIA COMPILATION 
+----------------------------------------------------------------------
+
+There is currently only one officially-supported approach for building
+and installing ROME from the open-source code:2
+
+Make sure that you have installed Intel C++ complier, Intel mkl library 
+and Intel MPI library. To install ROME, the first step is loading your 
+intel complier, for example:
+
+source /apps/mpss/intel_parallel_2015/composer_xe_2015.1.133/bin/compilervars.sh intel64
+source /apps/mpss/intel_parallel_2015/impi/5.0.2.044/bin64/mpivars.sh
+
+To build ROME, unzip rome1.0a.zip and go into folder first:
+
+unzip rome1.1a.zip
+cd rome1.1a
+
+or building ROME with “mpiicpc” complier, using:
+
+make
+
+If you bind your Intel C++ complier with other MPI implementation like “mpicxx”, using:
+
+export ROME_CC=mpicxx
+make
+
+If you want to build ROME with Non-MPI (single node), using:
+
+export ROME_CC=icpc
+make
+
+If you want to compile ROME with the OFFLOAD mode for Intel Knight Corner coprocessors:
+
+export ROME_OFFLOAD=true
+export ROME_CC=mpiicpc
+make
+
+The binary file will be generated in floder “/bin”.
+
+Type:
+./bin/rome_deep2d -help
+to retrieve usage information.
+
+Good luck!
+
