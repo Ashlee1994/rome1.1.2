@@ -19,7 +19,7 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
-#include "../src/resmap/util.h"		// used for building precompiled headers on Windows
+#include "../src/resmap/resmap_util.h"		// used for building precompiled headers on Windows
 
 #include "statusTracer.h"
 

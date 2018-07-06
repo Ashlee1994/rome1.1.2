@@ -20,7 +20,7 @@
  * author citations must be preserved.
  ***************************************************************************/
 
-#include "../src/resmap/util.h"		// used for building precompiled headers on Windows
+#include "../src/resmap/resmap_util.h"		// used for building precompiled headers on Windows
 
 #include "tandemExecution.h"
 
@@ -180,9 +180,9 @@ namespace TandemExecution {
 		// start all the threads, they will either finish or wait at the barrier
 		for (unsigned int i = 0; i < size(); i++) {
 			AlgorithmThreadP t = 
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 				sNewA(AlgorithmThread,(_internals->_algorithmVector[i]));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 			_internals->_threadVector.push_back(t);
 			_internals->_alive++;
 			_internals->_wild++;
@@ -274,10 +274,10 @@ namespace TandemExecution {
 		}* _algorithm1;
 
 		Algorithms01() {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 			_algorithm0 = sNewA(Algorithm0,(this));
 			_algorithm1 = sNewA(Algorithm1,(this));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 		};
 
 		~Algorithms01() {

@@ -22,7 +22,7 @@
 #ifndef TILECONFIGURE_H_
 #define TILECONFIGURE_H_
 
-#include "../src/resmap/time.h"
+#include "../src/resmap/resmap_time.h"
 
 #define FIX_N_OVER_ROT_TILE
 

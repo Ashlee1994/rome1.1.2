@@ -23,10 +23,10 @@
 
 #pragma once
 
-#include "util.h"
-#include "error.h"
-#include "mpi.h"
-#include "string.h"
+#include "resmap_util.h"
+#include "resmap_error.h"
+#include "resmap_mpi.h"
+#include "resmap_string.h"
 
 #include "res_fft.h"
 #include "res_traits.h"

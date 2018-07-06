@@ -23,7 +23,7 @@
 #ifndef _ROME_DEBUG
 #define _ROME_DEBUG
 
-#include "../src/resmap/util.h"
+#include "../src/resmap/resmap_util.h"
 
 /*------ compare the datastream with RELION
 ------- example
@@ -101,9 +101,9 @@ private:
     public:
         double data_reduce[3];//minimum,average,maximum
 		static DoublePtr* make(double* _data, int _len, char* _what, char* _file, int _line) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 			return sNewA(DoublePtr,(_data, _len, _what, _file, _line));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 		}
 		DoublePtr(double* _data,int _len,char* _what,char* _file,int _line) 
 		  : Ptr(_data,_len,_what,_file,_line) {
@@ -124,9 +124,9 @@ private:
         double* complex_SOA_data;
         double data_reduce[6];
 		static DoubleComplexPtr* make(const std::complex<double>* _data,int _len,char* _what,char* _file,int _line) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 			return sNewA(DoubleComplexPtr,(_data,_len,_what,_file,_line));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 		}
 		DoubleComplexPtr(const std::complex<double>* _data,int _len,char* _what,char* _file,int _line)
         {
@@ -152,9 +152,9 @@ private:
     public:
         float data_reduce[3];//minimum,average,maximum
 		static FloatPtr* make(float* _data,int _len,char* _what,char* _file,int _line) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 			return sNewA(FloatPtr,(_data,_len,_what,_file,_line));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 		}
 		FloatPtr(float* _data,int _len,char* _what,char* _file,int _line) :
         Ptr(_data,_len,_what,_file,_line) {
@@ -171,9 +171,9 @@ private:
     public:
         int data_reduce[3];//minimum,average,maximum
 		static IntPtr* make(int* _data,int _len,char* _what,char* _file,int _line) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 			return sNewA(IntPtr,(_data,_len,_what,_file,_line));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 		}
 		IntPtr(int* _data,int _len,char* _what,char* _file,int _line) :
         Ptr(_data,_len,_what,_file,_line) {
@@ -190,9 +190,9 @@ private:
     public:
         int var;
 		static IntVar* make(int _data,int _len,char* _what,char* _file,int _line) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 			return sNewA(IntVar,(_data,_len,_what,_file,_line));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 		}
 		IntVar(int _data,int _len,char* _what,char* _file,int _line)
         {
@@ -208,9 +208,9 @@ private:
     public:
         double var;
 		static DoubleVar* make(double _data,int _len,char* _what,char* _file,int _line) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 			return sNewA(DoubleVar,(_data,_len,_what,_file,_line));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 		}
 		DoubleVar(double _data,int _len,char* _what,char* _file,int _line)
         {

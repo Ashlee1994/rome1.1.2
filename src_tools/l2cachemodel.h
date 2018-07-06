@@ -24,7 +24,7 @@
 
 #include "checker.h"
 
-#include "../src/resmap/util.h"
+#include "../src/resmap/resmap_util.h"
 
 //#define L2_CACHE_MODELING
 

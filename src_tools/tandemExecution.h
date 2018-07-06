@@ -31,7 +31,7 @@
 //  Compare their intermediate results, to make sure they are the same.
 //  Continue until done...
 
-#include "../src/resmap/util.h"
+#include "../src/resmap/resmap_util.h"
 
 namespace TandemExecution {
 

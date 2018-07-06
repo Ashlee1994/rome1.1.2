@@ -22,7 +22,7 @@
 #ifndef PEAKFINDER_H_
 #define PEAKFINDER_H_
 
-#include "../src/resmap/util.h"
+#include "../src/resmap/resmap_util.h"
 
 //===============================================================================================================================
 // PeakFinder finds the local maximum in a multi-dimensional sampled space of noisy measurements

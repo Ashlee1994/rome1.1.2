@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "mpi.h"
+#include "resmap_mpi.h"
 
 #include "res_array.h"
 #include "res_fft.h"

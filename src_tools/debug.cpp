@@ -20,6 +20,6 @@
  * author citations must be preserved.
  ***************************************************************************/
 
-#include "../src/resmap/util.h"		// used for building precompiled headers on Windows
+#include "../src/resmap/resmap_util.h"		// used for building precompiled headers on Windows
 
 #include "debug.h"

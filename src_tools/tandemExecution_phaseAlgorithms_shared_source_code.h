@@ -43,7 +43,7 @@ TandemExecution::AlgorithmP pHASE##Algorithm(TandemExecution::AlgorithmsP algori
 }																											\
 // end of macro
 
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 ALGORITHM(Prepare,prepare)
 ALGORITHM(Iterate,iterate)
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"

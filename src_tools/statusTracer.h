@@ -23,9 +23,9 @@
 #ifndef STATUSTRACER_H_
 #define STATUSTRACER_H_
 
-#include "../src/resmap/util.h"
-#include "../src/resmap/mpi.h"
-#include "../src/resmap/error.h"
+#include "../src/resmap/resmap_util.h"
+#include "../src/resmap/resmap_mpi.h"
+#include "../src/resmap/resmap_error.h"
 
 #define append_double_ptr(d,l,w) appendDoublePtr(d,l,w)
 #define append_float_ptr(d,l,w) appendFloatPtr(d,l,w)

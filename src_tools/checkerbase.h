@@ -24,7 +24,7 @@
 #ifndef CHECKERBASE_H_
 #define CHECKERBASE_H_
 
-#include "../src/resmap/time.h"
+#include "../src/resmap/resmap_time.h"
 
 namespace Checker {
 

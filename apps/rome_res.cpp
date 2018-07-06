@@ -21,10 +21,10 @@
  * author citations must be preserved.
  ***************************************************************************/
 
-#include "../src/resmap/mpi.h"
-#include "../src/resmap/mrcs.h"
-#include "../src/resmap/option.h"
-#include "../src/resmap/component.h"
+#include "../src/resmap/resmap_mpi.h"
+#include "../src/resmap/resmap_mrcs.h"
+#include "../src/resmap/resmap_option.h"
+#include "../src/resmap/resmap_component.h"
 
 #include "../src/resmap/res_calculator.h"
 #include "../src/resmap/res_array.h"

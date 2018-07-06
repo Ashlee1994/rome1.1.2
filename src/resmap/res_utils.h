@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "macros.h"
+#include "resmap_macros.h"
 #include "res_array.h"
 #include "res_stats.h"
 

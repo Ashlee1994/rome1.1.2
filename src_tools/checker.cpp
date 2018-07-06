@@ -396,9 +396,9 @@ namespace Checker {
             }
             static RegionLoop* make(Ftrace* const ftrace,
                                     const char* file, int line, const char* funcEtc, int tid) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
                 return sNewA(RegionLoop,(ftrace, file, line, funcEtc, tid));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
             }
         };
         
@@ -414,9 +414,9 @@ namespace Checker {
             ~RegionIter() {
             }
             static RegionIter* make(Ftrace* const ftrace, RegionLoop& regionLoop, const char* file, int line, const char* funcEtc, int tid) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
                 return sNewA(RegionIter,(ftrace, regionLoop, file, line, funcEtc, tid));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
             }
         };
         
@@ -428,9 +428,9 @@ namespace Checker {
             ~RegionOtherScope() {
             }
             static RegionOtherScope* make(Ftrace* const ftrace, const char* file, int line, const char* funcEtc, int tid) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
                 return sNewA(RegionOtherScope,(ftrace, file, line, funcEtc, tid));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
             }
         };
         
@@ -540,9 +540,9 @@ public:
         sDelete(ftraceRegionBase);
     }
     static Impl* make(Life* parent) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
         return sNewA(Impl,(parent));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
     }
 };
 

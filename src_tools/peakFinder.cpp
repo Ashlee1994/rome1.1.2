@@ -170,9 +170,9 @@ struct PeakFinder::Internals {
 	}
 
 	static Internals* make(Bounds const & bounds) {
-#include "../src/resmap/util_heap_undefs.h"
+#include "../src/resmap/resmap_util_heap_undefs.h"
 		return sNewA(Internals, (bounds));
-#include "../src/resmap/util_heap_defs.h"
+#include "../src/resmap/resmap_util_heap_defs.h"
 	}
 };
 
