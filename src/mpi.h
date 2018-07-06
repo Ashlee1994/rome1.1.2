@@ -36,34 +36,69 @@
 //#define USEMPI
 
 #ifdef USEMPI
+#include "./util_heap_undefs.h"
 #include <mpi.h>
+#include "./util_heap_defs.h"
 #endif
 
 
 #ifdef USEMPI
-# define NODE0ONLY if (0 == node)
+# define NODEONLY(__node,__flag) if(__flag == __node)
+# define NODE0ONLY NODEONLY(node,0)
 # define MASTERNODE if (0 == MPI::COMM_WORLD.Get_rank()) // when not define node
 #else
-# define NODE0ONLY
+# define NODEONLY(__node,__flag) if(true)
+# define NODE0ONLY NODEONLY(node,0)
 # define MASTERNODE
 #endif
 
 // Support compile-time checking of the MPI code
 //
-//#define FAKEMPI
+#ifndef USEMPI
+#define FAKEMPI
+#endif
 
 #ifdef FAKEMPI
-#define USEMPI UsingFakeMPI
+//#define USEMPI UsingFakeMPI
 static const int MPI_MAX_PROCESSOR_NAME = 256;
 namespace MPI {
-    enum E {DOUBLE,FLOAT,SUM};
-    class COMM_WORLD_CLASS {
+    //
+    static void Init() {}
+    static void Finalize() {}
+    static void Get_processor_name(char*,int) {}
+    //
+    class Datatype {
+    public:
+        static Datatype Create_contiguous(int) {}
+        void Commit() {}
+        void Free() {}
+        int Get_size() const {}
+        bool operator==(Datatype&) const {}
+    };
+    extern Datatype DOUBLE,FLOAT,INT,BOOL;
+    //
+    class User_function;
+    class Op {
+    public:
+        void Init(User_function*, bool) {}
+        void Free() {}
+    };
+    extern Op SUM;
+    class Intracomm {
     public:
         static void Barrier() {}
-        static void Bcast(void*, int, E, int) {}
-        static void Reduce(void*, void*, int, E, E, int) {}
-        static void Allreduce(void*, void*, int, E, E) {}
-    } COMM_WORLD;
+        static void Bcast(void*, int, Datatype, int) {}
+        static void Send(const void*, int, Datatype, int, int) {}
+        static void Recv(void*, int, Datatype, int, int) {}
+        static void Reduce(void*, void*, int, Datatype, Op, int) {}
+        static void Allreduce(void*, void*, int, Datatype, Op) {}
+        static void Gatherv(void*, int, Datatype, void*, int*, int*, Datatype, int) {}
+        static void Reduce_scatter(void*, void*, int*, Datatype, Op) {}
+        static Intracomm Split(int,int) {}
+        int Get_size() {return 1;}
+        int Get_rank() {return 0;}
+    };
+    extern Intracomm COMM_WORLD;
 };
 #endif
 

@@ -18,4 +18,28 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "error.h"
+
+rome_error::rome_error( const char* _what_arg ,const char* _file, int _line) : what_arg(_what_arg),file(_file),line(_line) {
+	std::cout<<"Errors encountered, "<<what_arg<<" @ "<<file<<":"<<line<<std::endl;
+	std::cerr<<"Errors encountered, "<<what_arg<<" @ "<<file<<":"<<line<<std::endl;
+}
+
+rome_error::rome_error( const std::string& _what_arg ,const char* _file, int _line) : what_arg(_what_arg.c_str()),file(_file),line(_line) {
+	std::cout<<"Errors encountered, "<<what_arg<<" @ "<<file<<":"<<line<<std::endl;
+	std::cerr<<"Errors encountered, "<<what_arg<<" @ "<<file<<":"<<line<<std::endl;
+}
+
+void rome_error::assertFalse(const char*        _what_arg, const char* _file, int _line) {
+    std::cerr<<_what_arg<<" "<<_file<<" "<<_line<<std::endl;
+    assert(false);
+	throw rome_error(_what_arg, _file, _line);
+}
+
+void rome_error::assertFalse(const std::string& _what_arg, const char* _file, int _line) {
+    std::cerr<<_what_arg<<" "<<_file<<" "<<_line<<std::endl;
+	assert(false);
+	throw rome_error(_what_arg, _file, _line);
+}

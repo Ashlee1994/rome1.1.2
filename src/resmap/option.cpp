@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Yong Bei Ma(galowma@gmail.com) Bevin R Brett(bevin_brett@hotmail.com)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,74 +21,95 @@
  * author citations must be preserved.
  ***************************************************************************/
 
-#include "./mpi.h"
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "option.h"
 
 static inline std::string trimKey(std::string key) {
-    if (key.find('-') == std::string::npos) return key;
-    else return key.substr(key.find_last_of('-'));
+	// skip leading whitespace
+	auto nws = key.find_first_not_of(" \t");
+	if (nws != std::string::npos) key = key.substr(nws, key.size()-nws);
+	// see if it is an option, if not return the empty string
+    if (key[0] != '-') return std::string();
+	auto nh = key.find_first_not_of("-");
+    return (nh != std::string::npos) ? key.substr(nh-1, key.size()-nh+1) : key;
 }
 
 // add all options
 void Option::addOption(std::string key,std::string comment,std::string default_value){
     Elem oneOption;
     key = trimKey(key);
-    keyLength = keyLength < key.length()?key.length():keyLength;
-    int current_commentLength = 0;// consider comment has '\n'
-    for (const auto & p : comment) {
-        current_commentLength++;
-        if (p=='\n') {
-            commentLength = commentLength < current_commentLength?current_commentLength:commentLength;
-            current_commentLength = 0;
-        }
-    }
-    commentLength = commentLength < current_commentLength?current_commentLength:commentLength;
-    oneOption.key = key;oneOption.value = default_value;oneOption.comment = comment;
+    maxKeyLength = std::max(maxKeyLength,key.length());
+    size_t commentLength = comment.find('\n');
+	if (commentLength == std::string::npos) commentLength = comment.size();
+    maxCommentLength  = std::max(maxCommentLength, commentLength);	// assumes the longest line in a comment with \n is the first line
+    oneOption.key     = key;
+	oneOption.value   = default_value;
+	oneOption.comment = comment;
     AllOptions.push_back(oneOption);
     IOParser[key] = default_value;
 }
 
+int Option::readArg(const char* arg0, const char* arg1) {
+
+	auto key = trimKey(arg0);
+	if (IOParser.find(key) == IOParser.end()) { // if it does not have this option, reject it
+		std::cerr << "command line option '" << key << "' is not known." << std::endl;
+		return 1;
+	}
+	
+	if (arg1) {
+		std::string value = arg1;
+		if (IOParser.find(trimKey(value)) == IOParser.end()) { // if the value is not an option it must be the argument - weird, but supports negative numbers, sigh
+			IOParser[key] = value;
+			return 2;
+		}
+	}
+
+	IOParser[key] = "1";
+	return 1;
+}
+
 // read command line
-void Option::readCommandLine(int argc, char * argv[]){
+void Option::readCommandLine(int argc, char * argv[]) {
     // add options one by one
     for (int i = 1; i < argc;) {
-        auto key = trimKey(argv[i+0]);
-        if (IOParser.find(key) == IOParser.end()) { // if it does not have this option,escape it
-//            MPI_LOG<<"wrong option(command line argument) ,don't need "<<key<<" option."<<std::endl;
-            i++;
-        }
-        else{ // if it has this option
-            if (i+1 < argc) {
-                std::string value = argv[i+1];
-                if (IOParser.find(trimKey(value)) == IOParser.end()) { // if this option has value
-                    IOParser[key] = value;
-                    i += 2;
-                }
-                else{
-                    IOParser[key] = "1";
-                    i += 1;
-                }
-            }
-            else{
-                IOParser[key] = "1";
-                i += 1;
-            }
-        }
+		i += readArg(argv[i], (i+1<argc) ? argv[i+1] : nullptr);
     }
+}
+
+void Option::readIncludeFile(std::string fnm) {
+	ifstreamCheckingExistence is(fnm.c_str());
+	while (!is.eof()) {
+		std::string key,value;
+		std::getline(is,key);
+		if (is.fail()||is.bad()) break;
+		auto nws = key.find_first_not_of(" \t");
+		if (nws != std::string::npos) key = key.substr(nws,key.length()-nws);
+		if (key.size() > 0 && key[0] == '#') continue;
+		auto ws = key.find_first_of(" \t");
+		if (ws != std::string::npos) {
+			value = key.substr(ws, key.size()-ws);
+			key   = key.substr(0, ws);
+			auto nws = value.find_first_not_of(" \t");
+			value    = value.substr(nws, value.size()-nws);
+		}
+		readArg(key.c_str(), value.size() ? value.c_str() : nullptr);
+	}
 }
 
 std::string Option::getOption(std::string key){
     // trim the key to format : "-v"
     key = trimKey(key);
     if (IOParser.find(key) == IOParser.end()) {
-        std::cerr<<"make sure you have add "<<key<<" option."<<std::endl;
+        std::cerr<<"make sure you have added "<<key<<" option."<<std::endl;
         ERROR_REPORT("missing some key in option.")
     }
     std::string value = IOParser[key];
     if (value == Option::unspecified()) {
         std::cerr<<"you need input "<<key<<" option , which means : "<<std::endl;
         std::for_each(AllOptions.begin(), AllOptions.end(),
-                      [&](Elem& elem){if(elem.key == key) MPI_LOG<<elem.comment<<std::endl;});
+                      [&](Elem& elem){if(elem.key == key) std::cout<<elem.comment<<std::endl;});
         ERROR_REPORT("missing some input parameter.")
     }
     return value;
@@ -115,24 +139,26 @@ bool Option::getBoolOption(std::string key){
 }
 
 void Option::printValue(){
-    MPI_LOG<<"--------------------------------  user's options    ------------------------------------------------------------"<<std::endl;
+    if (!MPI_IS_ROOT) return;
+    std::cout<<"--------------------------------  user's options    ------------------------------------------------------------"<<std::endl;
     std::for_each(AllOptions.begin(), AllOptions.end(),
                   [&](Elem& elem){
-                      MPI_LOG<<std::setw(keyLength)<<std::left<<elem.key<<" , ";
-                      MPI_LOG<<std::setw(commentLength)<<elem.comment;
-                      MPI_LOG<<" , "<<IOParser[elem.key]<<std::endl;});
-    MPI_LOG<<"---------------------------------------------------------------------------------------------------------------"<<std::endl;
+                      std::cout<<std::setw(maxKeyLength)<<std::left<<elem.key<<" , ";
+                      std::cout<<std::setw(maxCommentLength)<<elem.comment;
+                      std::cout<<" , "<<IOParser[elem.key]<<std::endl;});
+    std::cout<<"---------------------------------------------------------------------------------------------------------------"<<std::endl;
 }
 
 void Option::printHelp(){
-    MPI_LOG<<"----------------------  general option(need to set)      -------------------------------------------------------"<<std::endl;
+    if (!MPI_IS_ROOT) return;
+    std::cerr<<"----------------------  general option(need to set)      -------------------------------------------------------"<<std::endl;
     std::for_each(AllOptions.begin(), AllOptions.end(),
                   [&](Elem& elem){if(elem.value == Option::unspecified())
-                      std::cerr<<std::setw(keyLength)<<std::left<<elem.key<<" , "<<elem.comment<<std::endl;});
-    MPI_LOG<<"--------------------  advanced option(with default value)  -----------------------------------------------------"<<std::endl;
+                      std::cerr<<std::setw(maxKeyLength)<<std::left<<elem.key<<" , "<<elem.comment<<std::endl;});
+    std::cerr<<"--------------------  advanced option(with default value)  -----------------------------------------------------"<<std::endl;
     std::for_each(AllOptions.begin(), AllOptions.end(),
                   [&](Elem& elem){if(elem.value != Option::unspecified())
-                      std::cerr<<std::setw(keyLength)<<elem.key<<" , "<<std::setw(commentLength)<<elem.comment<<" , default : "<<elem.value<<std::endl;});
-    MPI_LOG<<"----------------------------------------------------------------------------------------------------------------"<<std::endl;
+                      std::cerr<<std::setw(maxKeyLength)<<elem.key<<" , "<<std::setw(maxCommentLength)<<elem.comment<<" , default : "<<elem.value<<std::endl;});
+    std::cerr<<"----------------------------------------------------------------------------------------------------------------"<<std::endl;
 }
 

@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Yong Bei Ma(galowma@gmail.com) Jian Wang(wj_hust08@hust.edu.cn)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,15 +21,10 @@
  * author citations must be preserved.
  ***************************************************************************/
 
-#pragma once
+#ifndef MRCS_H_
+#define MRCS_H_
 
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <cmath>
-#include <vector>
-#include <stdlib.h>
-#include <memory>
+#include "util.h"
 
 #include "error.h"
 #include "string.h"
@@ -34,27 +32,10 @@
 #include "platform.h"
 #include "mpi.h"
 
-#ifdef JN_ICC
-#  define JN_ALIGNED_ALLOC _mm_malloc
-#  define JN_FREE  _mm_free
-#else
-  inline void* jn_malloc (int size, int align) {
-      void *p;
-      posix_memalign(&p, align, size);
-      return p;
-  }
-  inline void jn_free (void *p) {
-      free(p);
-  }
-#  define JN_ALIGNED_ALLOC jn_malloc
-#  define JN_FREE  jn_free
-
-#endif
-
 class FloatImages {
 public:
     // TBD : why this virtual deconstructor cannot work on my Mac
-    // virtual ~ListOfImages() = 0 {}
+    // virtual ~ListOfImages() {}
     virtual int nr_images() = 0;
     virtual int imageSide() = 0;		// images are assumed to be square
     virtual float* image_ptr(size_t i) = 0;
@@ -140,7 +121,7 @@ namespace Mrcs {
         
         void print(std::ostream& os = std::cout) const{
             os<<"MrcsHead{"
-#define ELT(T,N,V,I,C) <<" "<< #N <<":"<<N
+#define ELT(T,N,V,I,C) <<" "<< #N <<" : "<<N
 #define SEP
             MRCSHEAD_DATA
 #undef ELT
@@ -190,7 +171,7 @@ namespace Mrcs {
     public:
         MrcsImages(int _size, int _N) : size(_size), N(_N) {
             is_alloc = true;
-            image_data = (float*)JN_ALIGNED_ALLOC(sizeof(float)*N*size*size,64);
+            image_data = (float*)aMalloc(sizeof(float)*N*size*size,64);
             for (int i = 0; i < N*size*size; i++) image_data[i] = 0.;
         }
         MrcsImages(float* data, int _size, int _N) : size(_size), N(_N) {
@@ -199,10 +180,10 @@ namespace Mrcs {
         }
         MrcsImages(const double* data, int _size, int _N) : size(_size), N(_N) {
             is_alloc = true;
-            image_data = (float*)JN_ALIGNED_ALLOC(sizeof(float)*N*size*size,64);
+            image_data = (float*)aMalloc(sizeof(float)*N*size*size,64);
             for (int i = 0; i < N*size*size; i++) image_data[i] = float(data[i]);
         }
-        virtual ~MrcsImages() {if(is_alloc) JN_FREE(image_data); image_data = nullptr;}
+        virtual ~MrcsImages() {if(is_alloc) aFree(image_data); image_data = nullptr;}
         virtual int nr_images() { return N; }
         virtual int imageSide() { return size; }
         virtual float* image_ptr(size_t i) { return image_data + size*size*i; }
@@ -221,10 +202,10 @@ namespace Mrcs {
     public:
         MrcsFImages(int _size, int _N) : size(_size), N(_N), Fsize(_size/2+1) {
             is_alloc = true;
-            image_data = (float*)JN_ALIGNED_ALLOC(sizeof(float)*N*size*size,64);
+            image_data = (float*)aMalloc(sizeof(float)*N*size*size,64);
             for (int i = 0; i < N*size*size; i++) image_data[i] = 0.;
-            image_data_real = (float*)JN_ALIGNED_ALLOC(sizeof(float)*N*size*Fsize,64);
-            image_data_imag = (float*)JN_ALIGNED_ALLOC(sizeof(float)*N*size*Fsize,64);
+            image_data_real = (float*)aMalloc(sizeof(float)*N*size*Fsize,64);
+            image_data_imag = (float*)aMalloc(sizeof(float)*N*size*Fsize,64);
             for (int i = 0; i < N*size*Fsize; i++) image_data_real[i] = image_data_imag[i] = 0.;
         }
         template<typename T>
@@ -232,7 +213,7 @@ namespace Mrcs {
             is_alloc = false;
             int size2 = size*size;
             int Fsize2 = size*Fsize;
-            image_data = (float*)JN_ALIGNED_ALLOC(sizeof(float)*N*size*size,64);
+            image_data = (float*)aMalloc(sizeof(float)*N*size*size,64);
             for (int n = 0; n < N; n++) {
                 //
                 for (int i = 0; i < size; i++) {
@@ -246,10 +227,10 @@ namespace Mrcs {
         }
         virtual ~MrcsFImages() {
             if(is_alloc) {
-                JN_FREE(image_data_real);
-                JN_FREE(image_data_imag);
+                aFree(image_data_real);
+                aFree(image_data_imag);
             }
-            JN_FREE(image_data);
+            aFree(image_data);
             image_data_real = nullptr;
             image_data_imag = nullptr;
             image_data = nullptr;
@@ -279,7 +260,7 @@ namespace Mrcs {
 
         MrcVolume(int _size,value_type _anpix) : size(_size), anpix(_anpix) {
             is_alloc = true;
-            data = (value_type*)JN_ALIGNED_ALLOC(sizeof(value_type)*size*size*size,64);
+            data = (value_type*)aMalloc(sizeof(value_type)*size*size*size,64);
             for (int i = 0; i < size*size*size; i++) data[i] = 0.;
         }
 
@@ -290,7 +271,7 @@ namespace Mrcs {
 
         MrcVolume(const double* _data, int _size, double _anpix) : size(_size), anpix(_anpix) {
             is_alloc = true;
-            data = (value_type*)JN_ALIGNED_ALLOC(sizeof(value_type)*size*size*size,64);
+            data = (value_type*)aMalloc(sizeof(value_type)*size*size*size,64);
             for (int i = 0; i < size*size*size; i++) data[i] = value_type(_data[i]);
         }
 
@@ -326,10 +307,10 @@ namespace Mrcs {
             }
             size = head->NC;
             MPI_LOG << fn_mrc << std::endl;
-            head->print();
+            if(MPI_IS_ROOT) head->print();
             anpix = head->X_length / (value_type)size;
             is_alloc = true;
-            data = new value_type[size*size*size];
+            data = (value_type*)aMalloc(sizeof(value_type)*size*size*size, 64);
             ifile.seekg(head->NSYMBT, std::ios::cur);
             ifile.read(reinterpret_cast<char *>(data), sizeof(value_type)*size*size*size);
             p = (int*)data;
@@ -350,7 +331,7 @@ namespace Mrcs {
 
         void clear() {
             if (is_alloc) {
-                delete [] data;
+                aFree(data);
             }
             init();
         }
@@ -363,4 +344,4 @@ namespace Mrcs {
     void UnitTest(std::string fn_mrcs);
     
 }
-
+#endif

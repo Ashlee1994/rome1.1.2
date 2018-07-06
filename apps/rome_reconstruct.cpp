@@ -135,8 +135,10 @@ namespace Reconstruct{
             // sub.read(fn_sub);
             // projector.computeFourierTransformMap(sub(), dummy, 2 * r_max);
         }
+#include "../src/util_heap_undefs.h"
         // initialize all threads data
         FFTWTransformer* transformer = new FFTWTransformer(ori_size,ori_size);
+#include "../src/util_heap_defs.h"
         //
         CTF ctf;
         Aligned1dArray<FDOUBLE> Fctf(ori_size*(ori_size/2+1));
@@ -341,8 +343,10 @@ namespace Reconstruct{
         originalF2dReal	.fini();	originalF2dImag	.fini();
         shiftedF2dReal	.fini();	shiftedF2dImag	.fini();
         
+#include "../src/util_heap_undefs.h"
         delete transformer;
-
+#include "../src/util_heap_defs.h"
+        
         TIMEPOINT
         TIMEPOINT_FINA
         
@@ -367,14 +371,14 @@ namespace Reconstruct{
         }
         // reduce data
         int local_temp_size = backprojector.data.dimzyx*2;
-        FDOUBLE* local_temp = (FDOUBLE*)_mm_malloc(sizeof(FDOUBLE)*local_temp_size,64);
+        FDOUBLE* local_temp = (FDOUBLE*)aMalloc(sizeof(FDOUBLE)*local_temp_size,64);
         {
             memcpy(local_temp, (FDOUBLE*)backprojector.data.wptr(), sizeof(FDOUBLE)*local_temp_size);
             MPI::COMM_WORLD.Allreduce(local_temp,(FDOUBLE*)backprojector.data.wptr(),local_temp_size,MPI_FDOUBLE,MPI::SUM);
             memcpy(local_temp, backprojector.weight.wptr(), sizeof(FDOUBLE)*local_temp_size/2);
             MPI::COMM_WORLD.Allreduce(local_temp,backprojector.weight.wptr(),local_temp_size/2,MPI_FDOUBLE,MPI::SUM);
         }
-        _mm_free(local_temp);
+        aFree(local_temp);
         
 		//
        	NODE0ONLY{

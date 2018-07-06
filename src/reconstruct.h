@@ -40,16 +40,13 @@
 #ifndef RECONSTRUCT_H_
 #define RECONSTRUCT_H_
 
-#include <vector>
-#include <assert.h>
-#include <limits>
-
 #include "./image.h"
 #include "./mrcs.h"
 #include "./math.h"
 #include "./time.h"
 #include "./array.h"
 #include "./symmetries.h"
+#include "./mpi.h"
 
 #ifndef NEAREST_NEIGHBOUR
 #define NEAREST_NEIGHBOUR 0
@@ -63,6 +60,44 @@
 #define RADIUS_L(radius2,kr,ir)  (radius2-kr*kr-ir*ir) < 0 ? 0 : ceil (sqrt(double(radius2-kr*kr-ir*ir)));
 
 #define XMIPP_ORIGIN(x) -(int)((float) (x) / 2.0)
+
+
+// - - -- - - - -- - - - -- - -debug - - -- - - -
+//#define PRINT_RESULT
+inline void printSum(FDOUBLE* A,int L,char* what){
+#ifdef PRINT_RESULT
+    double sum = 0;
+    std::cout.precision(50);
+    for(int i = 0;i < L;i++) sum += A[i];
+    std::cout<<what<<"1~3 elements : "<<A[0]<<" "<<A[1]<<" "<<A[2]<<",sum = "<<sum<<std::endl;
+#endif
+};
+inline void printSumDouble(double* A,int L,char* what){
+#ifdef PRINT_RESULT
+    double sum = 0;
+    std::cout.precision(50);
+    for(int i = 0;i < L;i++) sum += A[i];
+    std::cout<<what<<"1~3 elements : "<<A[0]<<" "<<A[1]<<" "<<A[2]<<",sum = "<<sum<<std::endl;
+#endif
+};
+inline void printSum_real(MKL_Complex* A,int L,char* what){
+#ifdef PRINT_RESULT
+    double sum = 0;
+    std::cout.precision(50);
+    for(int i = 0;i < L;i++) sum += A[i].real;
+    std::cout<<what<<"1~3 elements : "<<A[0].real<<" "<<A[1].real<<" "<<A[2].real<<",sum = "<<sum<<std::endl;
+#endif
+};
+inline void printSum_imag(MKL_Complex* A,int L,char* what){
+#ifdef PRINT_RESULT
+    double sum = 0;
+    std::cout.precision(50);
+    for(int i = 0;i < L;i++) sum += A[i].imag;
+    std::cout<<what<<"1~3 elements : "<<A[0].imag<<" "<<A[1].imag<<" "<<A[2].imag<<",sum = "<<sum<<std::endl;
+#endif
+};
+// - - -- - - - -
+
 
 template<typename T>
 void centerFFT3D(const T* v_in, T* v_out, int dim,bool forward)
@@ -393,13 +428,13 @@ void getSpectrum(Vol<T> &Min,FDOUBLE* spectrum,int spectrum_type)
     int Fxsize = Min.dimx/2+1;
     FourierTransformer *transformer;
     if (Min.dimz == 1) {
-        transformer = new FourierTransformer(Min.dimy,Min.dimy);
+        transformer = FourierTransformer::make(Min.dimy,Min.dimy);
         Faux_real.init(1, Min.dimy, Min.dimx/2+1);
         Faux_imag.init(1, Min.dimy, Min.dimx/2+1);
     }
     else{
         assert(Min.dimz == Min.dimy);
-        transformer = new FourierTransformer(Min.dimy,Min.dimy,Min.dimy);
+        transformer = FourierTransformer::make(Min.dimy,Min.dimy,Min.dimy);
         Faux_real.init(Min.dimz, Min.dimy, Min.dimx/2+1);
         Faux_imag.init(Min.dimz, Min.dimy, Min.dimx/2+1);
     }
@@ -427,7 +462,7 @@ void getSpectrum(Vol<T> &Min,FDOUBLE* spectrum,int spectrum_type)
     for (int i = 0; i < xsize; i++)
         if (count[i] > 0.)
             spectrum[i] /= count[i];
-    delete transformer;
+    sDelete(transformer);
     Faux_real.fini();Faux_imag.fini();
 }
 
@@ -447,8 +482,8 @@ void windowFourierTransform(Vol<T>& Fin, Vol<T>& Fout)
         if (Fin.dimy != Fout.dimy){
             std::cerr<<"warning : windowFourierTransform different dimension y."<<std::endl;
             // TODO
-            assert(0);
-            exit(0);
+            assert(false);
+			EXIT_ABNORMALLY;
         }
         for (int n = 0; n < Fin.dimzyx; n++) {
             Fout(0,0,n) = Fin(0,0,n);
@@ -556,6 +591,9 @@ public:
     //
     void projectOneTile(FDOUBLE* f2d_real,FDOUBLE* f2d_imag,int n_start,int n_end,int f2d_size,const FDOUBLE A[][3],bool inv);
     //
+    void projectOneTileByShell(FDOUBLE* f2d_real,FDOUBLE* f2d_imag,int shell_n_start,int shell_n_end,
+                               int f2d_size,const FDOUBLE A[][3],bool inv,const int* nIndex);
+    //
     void rotate2D(FDOUBLE* f2d_real,FDOUBLE* f2d_imag,int f2d_size,const FDOUBLE A[][3],bool inv);
     //
 };
@@ -620,6 +658,10 @@ public:
                      Vol<MKL_Complex>& data_td,Vol<FDOUBLE>& weight_td,
                      const FDOUBLE* Mweight = nullptr,int z_start = 0,int z_end = 100000);
     
+    void backprojectOneTileByShell(const FDOUBLE* f2d_real,const FDOUBLE* f2d_imag,int shell_n_start,int shell_n_end,
+                                   int f2d_size,const FDOUBLE A[][3],bool inv, Vol<MKL_Complex>& data_td,
+                                   Vol<FDOUBLE>& weight_td,const FDOUBLE* Mweight,const int* nIndex);
+    
     void backrotate2D(const FDOUBLE* f2d_real,const FDOUBLE* f2d_imag,int f2d_size,const FDOUBLE A[][3], bool inv,
                       Vol<MKL_Complex>& data_td,Vol<FDOUBLE>& weight_td,const FDOUBLE* Mweight = nullptr);
     
@@ -639,6 +681,7 @@ public:
     // Also pass the transformer, to prevent making and clearing a new one before clearing the one in reconstruct()
     void windowToOridimRealSpace(Vol<MKL_Complex> &Fconv, Vol<FDOUBLE> &Vol_out, FourierTransformerBase& transformer);
     
+    //
     void reconstruct(Vol<FDOUBLE> &vol_out,
                      int max_iter_preweight,
                      bool do_map,
@@ -653,7 +696,24 @@ public:
                      int minres_map = -1,
                      int nr_threads = 1,
                      std::string tmp_folder = "NULL");
+
+    // Get only the lowest resolution components from the data and weight array
+    // (to be joined together for two independent halves in order to force convergence in the same orientation)
+    void getLowResDataAndWeight(Vol<MKL_Complex > &lowres_data, Vol<FDOUBLE> &lowres_weight,int lowres_r_max);
     
+    // Set only the lowest resolution components from the data and weight array
+    // (to be joined together for two independent halves in order to force convergence in the same orientation)
+    void setLowResDataAndWeight(Vol<MKL_Complex > &lowres_data, Vol<FDOUBLE> &lowres_weight,int lowres_r_max);
+    
+    //  Get complex array at the original size as the straightforward average
+    //  padding_factor*padding_factor*padding_factor voxels
+    //  This will then be used for FSC calculation between two random halves
+    void getDownsampledAverage(Vol<MKL_Complex > &avg);
+    
+    // From two of the straightforward downsampled averages, calculate an FSC curve
+    void calculateDownSampledFourierShellCorrelation(Vol<MKL_Complex > &avg1,
+                                                     Vol<MKL_Complex > &avg2,
+                                                     FDOUBLE* fsc);
 };
 
 

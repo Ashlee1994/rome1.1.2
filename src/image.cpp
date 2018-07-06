@@ -17,7 +17,32 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
+ /***************************************************************************
+ *
+ * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ * Bevin Brett
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * This complete copyright notice must be included in any revised version of the
+ * source code. Additional authorship citations may be added, but existing
+ * author citations must be preserved.
+ ***************************************************************************/
+
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "image.h"
+
+bool ShiftImageInFourierTransformNew_useSinCosTable = true;
 
 namespace TabulatedSinCos {
 	Table::Table() {
@@ -26,9 +51,42 @@ namespace TabulatedSinCos {
 			tabulated[i].sin = sin(xx);
 			tabulated[i].cos = cos(xx);
 		}
+#ifdef L2_CACHE_MODELING
+		epoch = 1;
+		for (int i = 0; i < nr_element; i++)
+			mostRecentAccess[i] = 0;
+#endif
+	}
+	int Table::initNotingSeqAcc() const {
+		int result = 0;
+#ifdef L2_CACHE_MODELING
+		result = ++epoch;
+#endif
+		return result;
+	}
+	void Table::finiNotingSeqAcc(int initResult) const {
+#ifdef L2_CACHE_MODELING
+		// It might be worth compressing these to the cache line boundary
+		// and also recognizing strided (or at least unit stride) accesses
+		//
+		for (int i = 0; i < nr_element; i++) {
+			int mra = mostRecentAccess[i].load();
+			if (mra >= initResult)
+				L2CacheModel::seqAcc("TabulatedSinCos table", 0, &mostRecentAccess[i], 1);
+		}
+#endif
 	}
 	const Table table;
 }
+
+IntPerformanceCounter ShiftImageInFourierTransformNew_performanceCounter("ShiftImageInFourierTransformNew_performanceCounter");
+IntPerformanceCounter ShiftImageInFourierTransformNew_init_performanceCounter("ShiftImageInFourierTransformNew_init_performanceCounter");
+
+IntPerformanceCounter ShiftImageInFourierTransform1_performanceCounter("ShiftImageInFourierTransform1_performanceCounter");
+IntPerformanceCounter ShiftImageInFourierTransform2_performanceCounter("ShiftImageInFourierTransform2_performanceCounter");
+IntPerformanceCounter ShiftImageInFourierTransform4_performanceCounter("ShiftImageInFourierTransform4_performanceCounter");
+
+IntPerformanceCounter ShiftImageInFourierTransformSimple_performanceCounter("ShiftImageInFourierTransformSimple_performanceCounter");
 
 
 void windowFourierTransform(SOAComplexReadonly& in,int in_size,SOAComplexDouble& out,int out_size)
@@ -111,9 +169,9 @@ void getSpectrum(const double* Min,int Min_size,double* spectrum,int spectrum_ty
     int Min_Fsize2 = Min_size*(Min_size/2+1);
     
     SOAComplexDouble Faux;
-    Faux.real = (double*)_mm_malloc(sizeof(double)*Min_Fsize2,64);
-    Faux.imag = (double*)_mm_malloc(sizeof(double)*Min_Fsize2,64);
-    double* count = (double*)_mm_malloc(sizeof(double)*Min_size,64);
+    Faux.real = (double*)aMalloc(sizeof(double)*Min_Fsize2,64);
+    Faux.imag = (double*)aMalloc(sizeof(double)*Min_Fsize2,64);
+    double* count = (double*)aMalloc(sizeof(double)*Min_size,64);
     
     for (int i = 0; i < Min_size; i++) {
         count[i] = spectrum[i] = 0.;
@@ -144,9 +202,9 @@ void getSpectrum(const double* Min,int Min_size,double* spectrum,int spectrum_ty
         if (count[i] > 0.)
             spectrum[i] /= count[i];
     
-    _mm_free(count);
-    _mm_free(Faux.real);
-    _mm_free(Faux.imag);
+    aFree(count);
+    aFree(Faux.real);
+    aFree(Faux.imag);
 }
 
 
@@ -156,9 +214,9 @@ void getSpectrum(const float* Min,int Min_size,float* spectrum,int spectrum_type
     int Min_Fsize2 = Min_size*(Min_size/2+1);
     
     SOAComplexFloat Faux;
-    Faux.real = (float*)_mm_malloc(sizeof(float)*Min_Fsize2,64);
-    Faux.imag = (float*)_mm_malloc(sizeof(float)*Min_Fsize2,64);
-    float* count = (float*)_mm_malloc(sizeof(float)*Min_size,64);
+    Faux.real = (float*)aMalloc(sizeof(float)*Min_Fsize2,64);
+    Faux.imag = (float*)aMalloc(sizeof(float)*Min_Fsize2,64);
+    float* count = (float*)aMalloc(sizeof(float)*Min_size,64);
     
     for (int i = 0; i < Min_size; i++) {
         count[i] = spectrum[i] = 0.;
@@ -189,9 +247,9 @@ void getSpectrum(const float* Min,int Min_size,float* spectrum,int spectrum_type
         if (count[i] > 0.)
             spectrum[i] /= count[i];
     
-    _mm_free(count);
-    _mm_free(Faux.real);
-    _mm_free(Faux.imag);
+    aFree(count);
+    aFree(Faux.real);
+    aFree(Faux.imag);
 }
 
 
@@ -320,8 +378,8 @@ void __declspec(noinline) shiftImageInFourierTransformUnitTestPerformance() {
 
 	class V { 
 		public: double* v; 
-		V() : v((double*)_mm_malloc(sizeof(double)*inout_Fsize2,64)) {} 
-		~V() { _mm_free(v); }
+		V() : v((double*)aMalloc(sizeof(double)*inout_Fsize2,64)) {} 
+		~V() { aFree(v); }
 	};
 	auto compare = [&](V&lhs, V&rhs) {
 		for (int i = 0; i < inout_Fsize2; i++) {
@@ -345,7 +403,7 @@ void __declspec(noinline) shiftImageInFourierTransformUnitTestPerformance() {
 		V vfout_imagOld[numberOfV];
 		V vfout_realNew[numberOfV];
 		V vfout_imagNew[numberOfV];
-	}* heapAlloc = new HeapAlloc;
+	}* heapAlloc = sNew(HeapAlloc);
 	auto & vfin_real     = heapAlloc->vfin_real    ;
 	auto & vfin_imag     = heapAlloc->vfin_imag    ;
 	auto & vfout_realOld = heapAlloc->vfout_realOld;
@@ -409,7 +467,7 @@ void __declspec(noinline) shiftImageInFourierTransformUnitTestPerformance() {
 			<< " produced << sum:" << sum << std::endl;
 	}
 
-	delete heapAlloc;
+	sDelete(heapAlloc);
 
 	std::cout << "shiftImageInFourierTransformUnitTestPerformance end" << std::endl;
 }

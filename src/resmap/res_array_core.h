@@ -23,10 +23,10 @@
 
 #pragma once
 
-#include "../util.h"
-#include "../error.h"
-#include "../mpi.h"
-#include "../string.h"
+#include "util.h"
+#include "error.h"
+#include "mpi.h"
+#include "string.h"
 
 #include "res_fft.h"
 #include "res_traits.h"

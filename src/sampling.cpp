@@ -17,6 +17,8 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "sampling.h"
 
 HealpixSampler::HealpixSampler()
@@ -37,14 +39,17 @@ HealpixSampler::~HealpixSampler()
     rot_angles      .resize(0);
     tilt_angles     .resize(0);
     healpix_order   = -1;
-    single_translations			.resize(0);
-    single_translations_index	.resize(0);
+    single_translations		.resize(0);
+    single_translations_x_index	.resize(0);
+    single_translations_y_index	.resize(0);
 }
 
 
-void HealpixSampler::initialize(FDOUBLE _offset_step /*= -1.*/,FDOUBLE _offset_range /*= -1.*/,
-                                FDOUBLE _psi_step /*= -1*/,int _order /*= -1*/,std::string _fn_sym /*= "C1"*/)
+void HealpixSampler::initialize(FDOUBLE _offset_step /*= -1.*/,FDOUBLE _offset_range /*= -1.*/,FDOUBLE _psi_step /*= -1*/,
+                                int _order /*= -1*/,std::string _fn_sym /*= "C1"*/,int prior_mode /*= NOPRIOR*/)
 {
+    orientational_prior_mode = prior_mode;
+    
     // --------- initialize offset,rotate,healpix step -----------
     if (_offset_step > 0. && _offset_range >= 0.)
     {
@@ -71,13 +76,67 @@ void HealpixSampler::initialize(FDOUBLE _offset_step /*= -1.*/,FDOUBLE _offset_r
     else
         psi_step = _psi_step;
     
-    // -------- initialize translations  ---------------
-    nrTrans = 0;
+    // ----------- initialize rot_angles,tilt_angles  --------------
+    if (is_3D) {
+#ifdef SAMPLING3D
+        healpix_base.Set(healpix_order, NEST);
+        fn_sym = _fn_sym;
+        
+        // symmetry
+        // Set up symmetry
+        SymList SL;
+        SL.isSymmetryGroup(fn_sym, pgGroup, pgOrder);
+        SL.read_sym_file(fn_sym);
+        
+        // Precalculate (3x3) symmetry matrices
+        Matrix2D<FDOUBLE>  L(4, 4), R(4, 4);
+        Matrix2D<FDOUBLE>  Identity(3,3);
+        Identity.initIdentity();
+        R_repository.clear();
+        L_repository.clear();
+        R_repository.push_back(Identity);
+        L_repository.push_back(Identity);
+        for (int isym = 0; isym < SL.SymsNo(); isym++)
+        {
+            SL.get_matrices(isym, L, R);
+            R.resize(3, 3);
+            L.resize(3, 3);
+            R_repository.push_back(R);
+            L_repository.push_back(L);
+        }
+#endif
+    }
+    else{
+        assert(_fn_sym=="C1");
+        fn_sym = "C1"; // This may not be set yet if restarting a 2D run....
+    }
+    
+    setTranslations();
+    
+    setOrientations();
+    
+    resetRandomlyPerturbedSampling();
+}
+
+void HealpixSampler::setTranslations(FDOUBLE _offset_step, FDOUBLE _offset_range)
+{
+    if (_offset_step > 0. && _offset_range >= 0.)
+    {
+        offset_step = _offset_step;
+        offset_range = _offset_range;
+    }
+    else
+    {
+        assert(offset_step>0);
+        assert(offset_range>=0);
+    }
+    
     int maxr = ceil(offset_range / offset_step);
-    // alloc enough space for translations
+    
     translations_x  .resize((2*maxr+1)*(2*maxr+1));
     translations_y  .resize((2*maxr+1)*(2*maxr+1));
     int trans_ind_x = 0;
+    nrTrans = 0;
     for (int ix = -maxr; ix <= maxr; ix++,trans_ind_x++)
     {
         FDOUBLE xoff = ix * offset_step;
@@ -91,25 +150,35 @@ void HealpixSampler::initialize(FDOUBLE _offset_step /*= -1.*/,FDOUBLE _offset_r
                 translations_y[nrTrans] = yoff;
                 nrTrans++;
                 //
-                single_translations_index.push_back(std::make_pair(trans_ind_x,trans_ind_y));
+                single_translations_x_index.push_back(trans_ind_x);
+                single_translations_y_index.push_back(trans_ind_y);
             }
         }
-        
     }
     //
-//#define DEBUG_SAMPLING
+    // #define DEBUG_SAMPLING
 #ifdef DEBUG_SAMPLING
     std::cout<<std::setw(10)<<"itrans"<<std::setw(15)<<"translations_x"<<std::setw(15)<<"translations_y"<<std::endl;
     for(int itrans = 0;itrans < nrTrans;itrans++){
         std::cout<<std::setw(10)<<itrans<<std::setw(15)<<translations_x[itrans]<<std::setw(15)<<translations_y[itrans]<<std::endl;
-        double trans_x = single_translations[single_translations_index[itrans].first];
-        double trans_y = single_translations[single_translations_index[itrans].second];
+        double trans_x = single_translations[single_trans_x_index[itrans]];
+        double trans_y = single_translations[single_trans_y_index[itrans]];
         if(trans_x!=translations_x[itrans] || trans_y!=translations_y[itrans]){
             std::cout<<"!!!!"<<std::setw(10)<<itrans<<std::setw(15)<<trans_x<<std::setw(15)<<trans_y<<" "<<std::endl;
             ERROR_REPORT("diff..sampling");
         }
     }
 #endif
+}
+
+void HealpixSampler::setOrientations(int _order, FDOUBLE _psi_step)
+{
+    // 2D in-plane angles
+    // By default in 3D case: use more-or-less same psi-sampling as the 3D healpix object
+    // By default in 2D case: use 5 degree
+    if (_psi_step > 0.)
+        psi_step = _psi_step;
+    
     // ---------- initialize psi_angles   -----------------
     nrPsi = 0;
     int nr_psi = ceil(360./psi_step);
@@ -122,35 +191,18 @@ void HealpixSampler::initialize(FDOUBLE _offset_step /*= -1.*/,FDOUBLE _offset_r
         nrPsi++;
     }
     
+    // Setup the HealPix object
+    // For adaptive oversampling only precalculate the COARSE sampling!
+    if (_order >= 0)
+    {
+        assert(_order<=13);// Npix = 805306368,up_bound of integer is 2147483648...angle is 25".8
+        healpix_base.Set(_order, NEST);
+        healpix_order = _order;
+    }
+    
     // ----------- initialize rot_angles,tilt_angles  --------------
     if (is_3D) {
 #ifdef SAMPLING3D
-        healpix_base.Set(healpix_order, NEST);
-        fn_sym = _fn_sym;
-        
-        { // symmetry
-            // Set up symmetry
-            SymList SL;
-            SL.isSymmetryGroup(fn_sym, pgGroup, pgOrder);
-            SL.read_sym_file(fn_sym);
-            
-            // Precalculate (3x3) symmetry matrices
-            Matrix2D<FDOUBLE>  L(4, 4), R(4, 4);
-            Matrix2D<FDOUBLE>  Identity(3,3);
-            Identity.initIdentity();
-            R_repository.clear();
-            L_repository.clear();
-            R_repository.push_back(Identity);
-            L_repository.push_back(Identity);
-            for (int isym = 0; isym < SL.SymsNo(); isym++)
-            {
-                SL.get_matrices(isym, L, R);
-                R.resize(3, 3);
-                L.resize(3, 3);
-                R_repository.push_back(R);
-                L_repository.push_back(L);
-            }
-        }
         //
         nrPix = healpix_base.Npix();
         double zz, phi;
@@ -167,31 +219,24 @@ void HealpixSampler::initialize(FDOUBLE _offset_step /*= -1.*/,FDOUBLE _offset_r
             directions_ipix[ipix] = ipix;
         }
         
-        {// symmetry
-//            #define DEBUG_SAMPLING
+//#define DEBUG_SAMPLING
 #ifdef  DEBUG_SAMPLING
-            writeAllOrientationsToBild("./orients_all.bild", "1 0 0 ", 0.020);
+        writeAllOrientationsToBild("./orients_all.bild", "1 0 0 ", 0.020);
 #endif
-            // Now remove symmetry-related pixels
-            // TODO check size of healpix_base.max_pixrad
-            removeSymmetryEquivalentPoints(0.5 * RAD2DEG(healpix_base.max_pixrad()));
-            
+        // Now remove symmetry-related pixels
+        // TODO check size of healpix_base.max_pixrad
+        removeSymmetryEquivalentPoints(0.5 * RAD2DEG(healpix_base.max_pixrad()));
+        nrPix = directions_ipix.size();
+        
 #ifdef  DEBUG_SAMPLING
-            writeAllOrientationsToBild("./orients_sym.bild", "0 1 0 ", 0.021);
+        writeAllOrientationsToBild("./orients_sym.bild", "0 1 0 ", 0.021);
 #endif
-            nrPix = directions_ipix.size();
-        }
         
 #endif
     }
     else{
         nrPix = 1;
-        assert(_fn_sym=="C1");
-        fn_sym = "C1"; // This may not be set yet if restarting a 2D run....
     }
-    // initialize random number
-    
-    resetRandomlyPerturbedSampling();
 }
 
 void HealpixSampler::resetRandomlyPerturbedSampling()
@@ -223,8 +268,7 @@ size_t HealpixSampler::NrTrans(int oversampling_order /*= 0*/) const
     if (oversampling_order == 0)
         return nrTrans;// translations_x.size();
     else
-        return round(pow(2., oversampling_order * 2)) * nrTrans;//translations_x.size();
-    
+        return round(pow(2., oversampling_order * 2)) * nrTrans;//translations_x.size();   
 }
 
 size_t HealpixSampler::NrPoints(int oversampling_order) const
@@ -233,6 +277,11 @@ size_t HealpixSampler::NrPoints(int oversampling_order) const
         return NrPsi(oversampling_order) * NrTrans(oversampling_order) * NrDir(oversampling_order);
     else
         return NrPsi(oversampling_order) * NrTrans(oversampling_order);
+}
+
+double HealpixSampler::getTranslationalSampling(int adaptive_oversampling) const
+{
+    return offset_step / std::pow(2., adaptive_oversampling);
 }
 
 double HealpixSampler::getAngularSampling(int adaptive_oversampling /*= 0*/) const
@@ -358,47 +407,221 @@ void HealpixSampler::getAllTranslationsAndOverTrans(int oversampling_order,Vecto
     }
 }
 
-//void HealpixSampler::getAllSingleTranslationsAndOverTrans(int oversampling_order,Vector1d& trans_x,Vector1d& trans_y,
-//                                                    	  Vector1d& trans_x_over,Vector1d& trans_y_over) const
-//{
-//    
-//}
-
-void HealpixSampler::getOrientations(int idir,int ipsi,int oversampling_order,FDOUBLE* over_psi,
-                                     FDOUBLE* over_rot /*= nullptr*/,FDOUBLE* over_tilt /*= nullptr*/) const
+void HealpixSampler::getAllSingleTranslationsAndOverTrans(int oversampling_order,std::map<double,int>& exp_positive_shift_index,
+                                                          std::vector<XYShift>& exp_trans_xyshift,Vector1d& trans_x_over,Vector1d& trans_y_over) const
 {
     assert(oversampling_order < 4);
-    if (!is_3D) { // 2D case
-        if (oversampling_order == 0)
+    exp_positive_shift_index.clear();
+    int index = 0;
+    for (int iSingleTrans = 0; iSingleTrans < single_translations.size(); iSingleTrans++)
+    {
+        double shift = single_translations[iSingleTrans];
+        if (shift > 0) { exp_positive_shift_index.insert(std::make_pair(shift, index));index++;}
+    }
+    exp_trans_xyshift.resize(0);
+    for (int itrans = 0; itrans < nrTrans; itrans++) {
+        int index_x = single_translations_x_index[itrans];
+        int index_y = single_translations_y_index[itrans];
+        double shiftx = single_translations[index_x];
+        double shifty = single_translations[index_y];
+        exp_trans_xyshift.push_back(
+			std::make_pair(
+				Shift(fabs(shiftx),shiftx>0?1:(shiftx!=0?-1:0)), 
+				Shift(fabs(shifty),shifty>0?1:(shifty!=0?-1:0)) ));
+    }
+    //
+    if (oversampling_order > 0)
+    {
+        int nr_oversamples = round(std::pow(2., oversampling_order));
+        for (int iover_trans_y = 0; iover_trans_y < nr_oversamples; iover_trans_y++)
         {
-            over_psi[0] = psi_angles[ipsi];
-        }
-        else
-        {
-            // for 2D sampling, only push back oversampled psi rotations
-            int nr_ipsi_over = round(pow(2., oversampling_order));
-            for (int ipsi_over = 0; ipsi_over < nr_ipsi_over; ipsi_over++)
+            for (int iover_trans_x = 0; iover_trans_x < nr_oversamples; iover_trans_x++)
             {
-                double overpsi = psi_angles[ipsi] - 0.5 * psi_step + (0.5 + ipsi_over) * psi_step / nr_ipsi_over;
-                over_psi[ipsi_over] = overpsi;
+                double over_yoff = - 0.5 * offset_step + (0.5 + iover_trans_y) * offset_step / nr_oversamples;
+                double over_xoff = - 0.5 * offset_step + (0.5 + iover_trans_x) * offset_step / nr_oversamples;
+                
+                int iover_trans = iover_trans_y*nr_oversamples+iover_trans_x;
+                
+                trans_x_over[iover_trans] = over_xoff;
+                trans_y_over[iover_trans] = over_yoff;
             }
         }
     }
-    else{ // 3D case
-#ifdef SAMPLING3D
-        if (oversampling_order == 0)
-        {
-            over_psi[0] = psi_angles[ipsi];
-            over_tilt[0] = tilt_angles[idir];
-            over_rot[0] = rot_angles[idir];
+    else
+    {
+        trans_x_over[0] = 0;
+        trans_y_over[0] = 0;
+    }
+    if (fabs(random_perturbation) > 0.)
+    {
+        double myperturb = random_perturbation * offset_step;
+#ifdef TTTT // where to add perturbation
+        for (int itrans = 0; itrans < nrTrans; itrans++) {
+            trans_x[itrans] += myperturb;
+            trans_y[itrans] += myperturb;
+        }
+#else
+        if (oversampling_order > 0){
+            int nr_oversamples = round(std::pow(2., oversampling_order));
+            int exp_nr_over_trans = nr_oversamples*nr_oversamples;
+            for (int iover_trans = 0; iover_trans < exp_nr_over_trans; iover_trans++) {
+                trans_x_over[iover_trans] += myperturb;
+                trans_y_over[iover_trans] += myperturb;
+            }
         }
         else{
-            Healpix_Base HealPixOver(oversampling_order + healpix_order, NEST);
-            int fact = HealPixOver.Nside()/healpix_base.Nside();
-            int nr_ipsi_over = round(std::pow(2., oversampling_order));
-            int nr_idir_over = round(std::pow(2., oversampling_order*2));
-            int x, y, face;
-            FDOUBLE rot, tilt;
+            trans_x_over[0] += myperturb;
+            trans_y_over[0] += myperturb;
+        }
+#endif
+    }
+}
+
+void HealpixSampler::getOrientations2D(int ipsi,int oversampling_order,FDOUBLE* over_psi) const
+{
+    assert(oversampling_order < 4);
+
+    if (oversampling_order == 0)
+    {
+        over_psi[0] = psi_angles[ipsi];
+    }
+    else
+    {
+        // for 2D sampling, only push back oversampled psi rotations
+        int nr_ipsi_over = round(pow(2., oversampling_order));
+        for (int ipsi_over = 0; ipsi_over < nr_ipsi_over; ipsi_over++)
+        {
+            double overpsi = psi_angles[ipsi] - 0.5 * psi_step + (0.5 + ipsi_over) * psi_step / nr_ipsi_over;
+            over_psi[ipsi_over] = overpsi;
+        }
+    }
+    
+    // Random perturbation
+    if (fabs(random_perturbation) > 0.)
+    {
+        double myperturb = random_perturbation * getAngularSampling();
+        
+        int nr_ipsi_over = round(pow(2., oversampling_order));
+        for (int ipsi_over = 0; ipsi_over < nr_ipsi_over; ipsi_over++)
+            over_psi[ipsi_over] += myperturb;
+    }
+}
+
+void HealpixSampler::addPerturbation(int oversampling_order,FDOUBLE* over_rot,FDOUBLE* over_tilt,FDOUBLE* over_psi) const
+{
+    // Random perturbation
+    if (fabs(random_perturbation) > 0.)
+    {
+        FDOUBLE A[3][3],R[3][3],AR[3][3];
+        double myperturb = random_perturbation * getAngularSampling();
+        int nr_over = oversamplingFactorOrientations(oversampling_order);
+        for (int iover = 0; iover < nr_over; iover++) {
+            Euler_angles2matrix(over_rot[iover],over_tilt[iover],over_psi[iover],A);
+            Euler_angles2matrix(myperturb, myperturb, myperturb, R);
+#define A_MULTIPLY_R(i,j) AR[i][j] = A[i][0]*R[0][j]+A[i][1]*R[1][j]+A[i][2]*R[2][j];
+            A_MULTIPLY_R(0,0) A_MULTIPLY_R(0,1) A_MULTIPLY_R(0,2)
+            A_MULTIPLY_R(1,0) A_MULTIPLY_R(1,1) A_MULTIPLY_R(1,2)
+            A_MULTIPLY_R(2,0) A_MULTIPLY_R(2,1) A_MULTIPLY_R(2,2)
+            Euler_matrix2angles(AR,over_rot[iover],over_tilt[iover],over_psi[iover]);
+        }// end loop iover
+    }
+}
+
+void HealpixSampler::getOrientations3D(int idir,int ipsi,int oversampling_order,FDOUBLE* over_psi,
+                                       FDOUBLE* over_rot,FDOUBLE* over_tilt) const
+{
+    assert(oversampling_order < 4);
+	//
+#ifdef SAMPLING3D
+    if (oversampling_order == 0)
+    {
+        over_psi[0] = psi_angles[ipsi];
+        over_tilt[0] = tilt_angles[idir];
+        over_rot[0] = rot_angles[idir];
+    }
+    else{
+        Healpix_Base HealPixOver(oversampling_order + healpix_order, NEST);
+        int fact = HealPixOver.Nside()/healpix_base.Nside();
+        int nr_ipsi_over = round(std::pow(2., oversampling_order));
+        int nr_idir_over = round(std::pow(2., oversampling_order*2));
+        int x, y, face;
+        FDOUBLE rot, tilt;
+        int ipix = directions_ipix[idir];
+        int idir_over = 0;
+        // Get x, y and face for the original, coarse grid
+        healpix_base.nest2xyf(ipix, x, y, face);
+        // Loop over the oversampled Healpix pixels on the fine grid
+        for (int j = fact * y; j < fact * (y+1); ++j)
+        {
+            for (int i = fact * x; i < fact * (x+1); ++i)
+            {
+                int overpix = HealPixOver.xyf2nest(i, j, face);
+                // this one always has to be double (also for SINGLE_PRECISION CALCULATIONS) for call to external library
+                double zz, phi;
+                HealPixOver.pix2ang_z_phi(overpix, zz, phi);
+                rot = rad2deg(phi);
+                tilt = acosd(zz);
+                
+                // The geometrical considerations about the symmetry below require that rot = [-180,180] and tilt [0,180]
+                checkDirection(rot, tilt);
+                
+                for (int ipsi_over = 0; ipsi_over < nr_ipsi_over; ipsi_over++)
+                {
+                    double overpsi = psi_angles[ipsi] - 0.5 * psi_step + (0.5 + ipsi_over) * psi_step / nr_ipsi_over;
+                    int iover = idir_over*nr_ipsi_over+ipsi_over;
+                    assert(iover >= 0);
+                    over_rot[iover] = rot;
+                    over_tilt[iover] = tilt;
+                    over_psi[iover] = overpsi;
+                }// end loop ipsi_over
+                idir_over++;
+            }// end loop i
+        } // end loop j
+        assert(idir_over == nr_idir_over);
+    }// oversampling_order != 0
+#endif
+    //
+    addPerturbation(oversampling_order, over_rot, over_tilt, over_psi);
+}
+
+// 2D
+void HealpixSampler::getAllOrientations(int oversampling_order,Vector2d& my_psi) const
+{
+    assert(oversampling_order < 4);
+    // TODO
+    int nr_over = oversamplingFactorOrientations(oversampling_order);
+    for (int ipsi = 0; ipsi < nrPsi; ipsi++) {
+        getOrientations2D(ipsi,oversampling_order,my_psi[ipsi].data());
+    }
+}
+
+// 3D
+void HealpixSampler::getAllOrientations(int oversampling_order,Vector2d& my_psi,Vector2d& my_rot,Vector2d& my_tilt) const
+{
+    assert(oversampling_order < 4);
+    int nr_over = oversamplingFactorOrientations(oversampling_order);
+#ifdef SAMPLING3D
+    if (oversampling_order == 0)
+    {
+        for (int idir = 0; idir < nrPix; idir++) {
+            my_tilt[idir][0] = tilt_angles[idir];
+            my_rot[idir][0] = rot_angles[idir];
+        }
+        for (int ipsi = 0; ipsi < nrPsi; ipsi++) {
+            my_psi[ipsi][0] = psi_angles[ipsi];
+        }
+    }
+    else
+    {
+        Healpix_Base HealPixOver(oversampling_order + healpix_order, NEST);
+        int fact = HealPixOver.Nside()/healpix_base.Nside();
+        int nr_idir_over = round(std::pow(2., oversampling_order*2));
+        int x, y, face;
+        FDOUBLE rot, tilt;
+        for (int idir = 0; idir < nrPix; idir++)
+        {
+            auto over_rot = my_rot[idir].data();
+            auto over_tilt = my_tilt[idir].data();
             int ipix = directions_ipix[idir];
             int idir_over = 0;
             // Get x, y and face for the original, coarse grid
@@ -417,49 +640,29 @@ void HealpixSampler::getOrientations(int idir,int ipsi,int oversampling_order,FD
                     
                     // The geometrical considerations about the symmetry below require that rot = [-180,180] and tilt [0,180]
                     checkDirection(rot, tilt);
-                    
-                    for (int ipsi_over = 0; ipsi_over < nr_ipsi_over; ipsi_over++)
-                    {
-                        double overpsi = psi_angles[ipsi] - 0.5 * psi_step + (0.5 + ipsi_over) * psi_step / nr_ipsi_over;
-                        int iover = idir_over*nr_ipsi_over+ipsi_over;
-                        assert(iover >= 0);
-                        over_rot[iover] = rot;
-                        over_tilt[iover] = tilt;
-                        over_psi[iover] = overpsi;
-                    }// end loop ipsi_over
+                    //
+                    over_rot[idir_over] = rot;
+                    over_tilt[idir_over] = tilt;
+                    //
                     idir_over++;
                 }// end loop i
             } // end loop j
             assert(idir_over == nr_idir_over);
-        }// oversampling_order != 0
-#endif
-    }// 3D case
-    
-    
-    // Random perturbation
-    if (fabs(random_perturbation) > 0.)
-    {
-        double myperturb = random_perturbation * getAngularSampling();
-        
-        if (!is_3D) { // 2D case
-            int nr_ipsi_over = round(pow(2., oversampling_order));
-            for (int ipsi_over = 0; ipsi_over < nr_ipsi_over; ipsi_over++)
-                over_psi[ipsi_over] += myperturb;
         }
-        else{ // 3D case
-            FDOUBLE A[3][3],R[3][3],AR[3][3];
-            int nr_over = oversamplingFactorOrientations(oversampling_order);
-            for (int iover = 0; iover < nr_over; iover++) {
-                Euler_angles2matrix(over_rot[iover],over_tilt[iover],over_psi[iover],A);
-                Euler_angles2matrix(myperturb, myperturb, myperturb, R);
-#define A_MULTIPLY_R(i,j) AR[i][j] = A[i][0]*R[0][j]+A[i][1]*R[1][j]+A[i][2]*R[2][j];
-                A_MULTIPLY_R(0,0) A_MULTIPLY_R(0,1) A_MULTIPLY_R(0,2)
-                A_MULTIPLY_R(1,0) A_MULTIPLY_R(1,1) A_MULTIPLY_R(1,2)
-                A_MULTIPLY_R(2,0) A_MULTIPLY_R(2,1) A_MULTIPLY_R(2,2)
-                Euler_matrix2angles(AR,over_rot[iover],over_tilt[iover],over_psi[iover]);
-            }// end loop iover
-        }// 3D case
-    }
+        //
+        int nr_ipsi_over = round(std::pow(2., oversampling_order));
+        assert(nr_over==nr_idir_over*nr_ipsi_over);
+        for (int ipsi = 0; ipsi < nrPsi; ipsi++)
+        {
+            auto over_psi = my_psi[ipsi].data();
+            for (int ipsi_over = 0; ipsi_over < nr_ipsi_over; ipsi_over++)
+            {
+                double overpsi = psi_angles[ipsi] - 0.5 * psi_step + (0.5 + ipsi_over) * psi_step / nr_ipsi_over;
+                over_psi[ipsi_over] = overpsi;
+            }// end loop ipsi_over
+        }
+    }// oversampling_order != 0
+#endif
 }
 
 void HealpixSampler::getAllTranslations(int oversampling_order, FDOUBLE* my_translations_x, FDOUBLE* my_translations_y) const
@@ -482,35 +685,6 @@ void HealpixSampler::getAllTranslations(int oversampling_order,Vector2d& my_tran
         getTranslations(itrans,oversampling_order,
                         my_translations_x[itrans].data(),
                         my_translations_y[itrans].data());
-}
-
-// 2D
-void HealpixSampler::getAllOrientations(int oversampling_order,FDOUBLE* my_psi) const
-{
-    assert(oversampling_order < 4);
-    // TODO
-    int nr_over = oversamplingFactorOrientations(oversampling_order);
-    int idir = 0;
-    for (int ipsi = 0; ipsi < nrPsi; ipsi++) {
-        int offset = ipsi*nr_over;
-        getOrientations(idir,ipsi,oversampling_order,my_psi+offset);
-    }
-}
-
-// 3D
-void HealpixSampler::getAllOrientations(int oversampling_order,Vector2d& my_psi,Vector2d& my_rot,Vector2d& my_tilt) const
-{
-    assert(oversampling_order < 4);
-    int nr_over = oversamplingFactorOrientations(oversampling_order);
-	#pragma omp parallel for collapse(2)
-    for (int idir = 0; idir < nrPix; idir++) {
-        for (int ipsi = 0; ipsi < nrPsi; ipsi++) {
-            getOrientations(idir,ipsi,oversampling_order,
-                            my_psi[idir*nrPsi+ipsi].data(),
-                            my_rot[idir*nrPsi+ipsi].data(),
-                            my_tilt[idir*nrPsi+ipsi].data());
-        }
-    }
 }
 
 //
@@ -549,7 +723,7 @@ void HealpixSampler::writeOutSampling(std::string fn_sampling)
     samplingFile.close();
 }
 
-void HealpixSampler::readFromSampling(std::string fn_sampling)
+void HealpixSampler::readFromSampling(std::string fn_sampling,bool debug_flag /*= false*/)
 {
     ifstreamCheckingExistence samplingFile(fn_sampling.c_str());
     {
@@ -558,8 +732,8 @@ void HealpixSampler::readFromSampling(std::string fn_sampling)
         while (true) {
             if (startingRead) {
                 double doubleTmp;std::string stringTmp;
-#define CINMETADATADOUBLE(V) samplingFile >> line;samplingFile >> doubleTmp;MASTERNODE std::cout<<std::setw(30)<<line<<" "<<doubleTmp<<std::endl;
-#define CINMETADATASTR(V) samplingFile >> line;samplingFile >> stringTmp;MASTERNODE std::cout<<std::setw(30)<<line<<" "<<stringTmp<<std::endl;
+#define CINMETADATADOUBLE(V) samplingFile >> line;samplingFile >> doubleTmp;if(debug_flag) {MASTERNODE std::cout<<std::setw(30)<<line<<" "<<doubleTmp<<std::endl;}
+#define CINMETADATASTR(V) samplingFile >> line;samplingFile >> stringTmp;if(debug_flag) {MASTERNODE std::cout<<std::setw(30)<<line<<" "<<stringTmp<<std::endl;}
                 //
                 CINMETADATADOUBLE(	"Is3DSampling"				)
                 CINMETADATADOUBLE(	"Is3DTranslationalSampling"	)
@@ -578,7 +752,7 @@ void HealpixSampler::readFromSampling(std::string fn_sampling)
             }
             else{
                 getline(samplingFile,line);
-                MASTERNODE std::cout<<line<<std::endl;
+                if(debug_flag) MASTERNODE std::cout<<line<<std::endl;
                 if ((line.find("data_sampling_general") !=std::string::npos) ){
                     startingRead = true;
                     getline(samplingFile,line);assert(line=="");// escape a empty line
@@ -594,66 +768,208 @@ void HealpixSampler::readFromSampling(std::string fn_sampling)
 
 void SamplingGrid::initialize(HealpixSampler& sampler3d,int _adaptive_oversampling)
 {
-    exp_nr_trans = sampler3d.NrTrans();
-    exp_nr_dir = sampler3d.NrDir();
-    exp_nr_psi = sampler3d.NrPsi();
-    size_t nr_orientation = exp_nr_dir*exp_nr_psi;
+    nr_trans = sampler3d.NrTrans();
+    nr_dir = sampler3d.NrDir();
+    nr_psi = sampler3d.NrPsi();
+    // size_t nr_orientation = exp_nr_dir*exp_nr_psi;
+    // int exp_nr_over_rot_max   = sampler3d.oversamplingFactorOrientations(adaptive_oversampling);
     adaptive_oversampling = _adaptive_oversampling;
     int exp_nr_over_trans_max = sampler3d.oversamplingFactorTranslations(adaptive_oversampling);
-    int exp_nr_over_rot_max = sampler3d.oversamplingFactorOrientations(adaptive_oversampling);
-    exp_over_psi	.resize(nr_orientation, std::vector<FDOUBLE>(exp_nr_over_rot_max,0));
-    exp_over_rot	.resize(nr_orientation, std::vector<FDOUBLE>(exp_nr_over_rot_max,0));
-    exp_over_tilt	.resize(nr_orientation, std::vector<FDOUBLE>(exp_nr_over_rot_max,0));
-    exp_over_trans_x.resize(exp_nr_trans, std::vector<FDOUBLE>(exp_nr_over_trans_max,0));
-    exp_over_trans_y.resize(exp_nr_trans, std::vector<FDOUBLE>(exp_nr_over_trans_max,0));
-    exp_trans_x		.resize(exp_nr_trans);
-    exp_trans_y		.resize(exp_nr_trans);
+    
+    int nr_ipsi_over = round(std::pow(2., adaptive_oversampling));
+    int nr_idir_over = round(std::pow(2., adaptive_oversampling*2));
+    exp_over_psi	.resize(nr_psi, std::vector<FDOUBLE>(nr_ipsi_over,0));
+    exp_over_rot	.resize(nr_dir, std::vector<FDOUBLE>(nr_idir_over,0));
+    exp_over_tilt	.resize(nr_dir, std::vector<FDOUBLE>(nr_idir_over,0));
+    thread_over_psi	.init(omp_get_max_threads(), nr_ipsi_over*nr_idir_over);thread_over_psi.fill_with_first_touch(0.);
+    thread_over_rot	.init(omp_get_max_threads(), nr_ipsi_over*nr_idir_over);thread_over_rot.fill_with_first_touch(0.);
+    thread_over_tilt.init(omp_get_max_threads(), nr_ipsi_over*nr_idir_over);thread_over_tilt.fill_with_first_touch(0.);
+    //
+    exp_over_trans_x.resize(nr_trans, std::vector<FDOUBLE>(exp_nr_over_trans_max,0));
+    exp_over_trans_y.resize(nr_trans, std::vector<FDOUBLE>(exp_nr_over_trans_max,0));
+    exp_trans_x		.resize(nr_trans);
+    exp_trans_y		.resize(nr_trans);
     exp_trans_x_over.resize(exp_nr_over_trans_max);
     exp_trans_y_over.resize(exp_nr_over_trans_max);
-    exp_nr_over_trans = 0;
-    exp_nr_over_rot = 0;
+    exp_trans_xyshift.resize(nr_trans);
+    nr_over_trans = 0;
+    nr_over_rot = 0;
 }
 
 void SamplingGrid::finalize()
 {
-    exp_over_trans_x.resize(0);
-    exp_over_trans_y.resize(0);
     exp_over_psi	.resize(0);
     exp_over_tilt	.resize(0);
     exp_over_rot	.resize(0);
+    thread_over_psi	.fini();
+    thread_over_rot	.fini();
+    thread_over_tilt.fini();
+    //
+    exp_over_trans_x.resize(0);
+    exp_over_trans_y.resize(0);
     exp_trans_x		.resize(0);
     exp_trans_y		.resize(0);
     exp_trans_x_over.resize(0);
     exp_trans_y_over.resize(0);
-    exp_nr_trans = 0;exp_nr_dir = 0;exp_nr_psi = 0;
-    exp_nr_over_trans = 0;exp_nr_over_rot = 0;
+    exp_positive_shift_index.clear();
+    exp_trans_xyshift.resize(0);
+    nr_trans = 0;nr_dir = 0;nr_psi = 0;
+    nr_over_trans = 0;nr_over_rot = 0;
     adaptive_oversampling = 0;current_oversampling = 0;
 }
 
-void SamplingGrid::computeGrid(HealpixSampler& sampler3d,int _current_oversampling)
+void SamplingGrid::computeGrid2D(HealpixSampler& sampler2d,int _current_oversampling)
+{
+    assert(current_oversampling <= adaptive_oversampling);
+    current_oversampling = _current_oversampling;
+    sampler2d.getAllOrientations(current_oversampling, exp_over_psi);
+    sampler2d.getAllTranslations(current_oversampling, exp_over_trans_x, exp_over_trans_y);
+    sampler2d.getAllTranslationsAndOverTrans(current_oversampling, exp_trans_x, exp_trans_y, exp_trans_x_over, exp_trans_y_over);
+    sampler2d.getAllSingleTranslationsAndOverTrans(current_oversampling, exp_positive_shift_index,
+                                                   exp_trans_xyshift, exp_trans_x_over, exp_trans_y_over);
+    nr_over_rot = sampler2d.oversamplingFactorOrientations(current_oversampling);
+    nr_over_trans = sampler2d.oversamplingFactorTranslations(current_oversampling);
+}
+
+void SamplingGrid::computeGrid3D(HealpixSampler& sampler3d,int _current_oversampling)
 {
     assert(current_oversampling <= adaptive_oversampling);
     current_oversampling = _current_oversampling;
     sampler3d.getAllOrientations(current_oversampling, exp_over_psi, exp_over_rot, exp_over_tilt);
     sampler3d.getAllTranslations(current_oversampling, exp_over_trans_x, exp_over_trans_y);
     sampler3d.getAllTranslationsAndOverTrans(current_oversampling, exp_trans_x, exp_trans_y, exp_trans_x_over, exp_trans_y_over);
-    exp_nr_over_rot = sampler3d.oversamplingFactorOrientations(current_oversampling);
-    exp_nr_over_trans = sampler3d.oversamplingFactorTranslations(current_oversampling);
+    sampler3d.getAllSingleTranslationsAndOverTrans(current_oversampling, exp_positive_shift_index,
+                                                   exp_trans_xyshift, exp_trans_x_over, exp_trans_y_over);
+    nr_over_rot = sampler3d.oversamplingFactorOrientations(current_oversampling);
+    nr_over_trans = sampler3d.oversamplingFactorTranslations(current_oversampling);
+}
+
+void SamplingGrid::selectOrientationsForLocalSearch(HealpixSampler& sampler3d,FDOUBLE sigma_rot,FDOUBLE sigma_tilt,FDOUBLE sigma_psi,
+                                                    const MetaDataElem* exp_metadata,int nr_images)
+{
+    //assert(nr_images==1);
+    assert(sigma_rot==sigma_tilt);
+    assert(sigma_tilt==sigma_psi);
+    pdf_orientation_for_nonzero_orientations.clear();
+   
+    pointer_dir_nonzeroprior.resize(nr_images);
+    directions_prior		.resize(nr_images);
+    pointer_psi_nonzeroprior.resize(nr_images);
+    psi_prior				.resize(nr_images);
+    std::vector<FDOUBLE> significant_images(nr_images,0);
+    for (int iimage = 0; iimage < nr_images; iimage++)
+    {
+        // First try if there are some fixed prior angles
+        FDOUBLE prior_rot = exp_metadata[iimage].ROT_PRIOR;
+        FDOUBLE prior_tilt = exp_metadata[iimage].TILT_PRIOR;
+        FDOUBLE prior_psi = exp_metadata[iimage].PSI_PRIOR;
+        
+        // If there were no defined priors (i.e. their values were 999.), then use the "normal" angles
+        if (prior_rot > 998.99 && prior_rot < 999.01)
+            prior_rot = exp_metadata[iimage].ROT;
+        if (prior_tilt > 998.99 && prior_tilt < 999.01)
+            prior_tilt = exp_metadata[iimage].TILT;
+        if (prior_psi > 998.99 && prior_psi < 999.01)
+            prior_psi = exp_metadata[iimage].PSI;
+        
+        pointer_dir_nonzeroprior[iimage].resize(0);directions_prior[iimage].resize(0);
+        pointer_psi_nonzeroprior[iimage].resize(0);psi_prior[iimage].resize(0);
+        sampler3d.selectOrientationsWithNonZeroPriorProbability(prior_rot, prior_tilt, prior_psi,
+                                                                sqrt(sigma_rot), sqrt(sigma_tilt), sqrt(sigma_psi),
+                                                                pointer_dir_nonzeroprior[iimage], directions_prior[iimage],
+                                                                pointer_psi_nonzeroprior[iimage], psi_prior[iimage]);
+        
+        //
+        for (const auto& directions_prior_p : directions_prior[iimage])
+            ERROR_CHECK(directions_prior_p <= 0, "directions_prior[iimage] smaller than zero???");
+        for (const auto& psi_prior_p : psi_prior[iimage])
+            ERROR_CHECK(psi_prior_p <= 0, "psi_prior[iimage] smaller than zero???");
+            
+//#define DEBUG_LOCAL_SEARCH
+#ifdef DEBUG_LOCAL_SEARCH
+#define PRINT(V) std::cout<<#V<<" : ";for (const auto& v : V) std::cout<<v<<" ";std::cout<<std::endl;
+        PRINT(pointer_dir_nonzeroprior[iimage])
+        PRINT(directions_prior[iimage])
+        PRINT(pointer_psi_nonzeroprior[iimage])
+        PRINT(psi_prior[iimage])
+#undef PRINT
+#endif
+        //
+        for (int i_idir = 0; i_idir < pointer_dir_nonzeroprior[iimage].size(); i_idir++) {
+            for (int i_ipsi = 0; i_ipsi < pointer_psi_nonzeroprior[iimage].size(); i_ipsi++) {
+                auto orientation = std::make_pair(pointer_dir_nonzeroprior[iimage][i_idir], pointer_psi_nonzeroprior[iimage][i_ipsi]);
+                auto pdf_orientation = directions_prior[iimage][i_idir]*psi_prior[iimage][i_ipsi];
+                auto it = pdf_orientation_for_nonzero_orientations.find(orientation);
+                if(it == pdf_orientation_for_nonzero_orientations.end()){
+                    // insert newer
+                    auto newit = pdf_orientation_for_nonzero_orientations.insert(it, std::make_pair(orientation,significant_images));
+                    newit->second[iimage] = pdf_orientation;
+                }
+                else{
+                    // modify
+                    assert(it->second[iimage]==0);
+                    it->second[iimage] = pdf_orientation;
+                }
+            }
+        }
+    }
+#ifdef DEBUG_LOCAL_SEARCH
+    for (const auto& orientationAndImage : pdf_orientation_for_nonzero_orientations) {
+        std::cout<<"{ " <<orientationAndImage.first.first<<","<<orientationAndImage.first.second<<" } : ";
+        for (const auto& p : orientationAndImage.second) {
+            std::cout<<p<<" , ";
+        }
+        std::cout<<std::endl;
+    }
+#endif
+}
+
+void SamplingGrid::setOrientation(HealpixSampler& sampler3d,int _current_oversampling,int idir,int ipsi,
+                                  FDOUBLE* &over_rot,FDOUBLE* &over_tilt,FDOUBLE* &over_psi)
+{
+    assert(current_oversampling==_current_oversampling);
+    auto tid = omp_get_thread_num();
+    over_psi = thread_over_psi[tid].wptrAll();
+    over_rot = thread_over_rot[tid].wptrAll();
+    over_tilt = thread_over_tilt[tid].wptrAll();
+    int nr_over = sampler3d.oversamplingFactorOrientations(_current_oversampling);
+    if (nr_over==1)
+    {
+        over_rot[0] = exp_over_rot[idir][0];
+        over_tilt[0] = exp_over_tilt[idir][0];
+        over_psi[0] = exp_over_psi[ipsi][0];
+        sampler3d.addPerturbation(current_oversampling, over_rot, over_tilt, over_psi);
+    }
+    else
+    {
+        int nr_idir_over = round(std::pow(2., current_oversampling*2));
+        int nr_ipsi_over = round(std::pow(2., current_oversampling));
+        int iover = 0;
+        for (int idir_over = 0; idir_over < nr_idir_over; idir_over++) {
+            for (int ipsi_over = 0; ipsi_over < nr_ipsi_over; ipsi_over++) {
+                over_psi[iover] = exp_over_psi[ipsi][ipsi_over];
+                over_rot[iover] = exp_over_rot[idir][idir_over];
+                over_tilt[iover] = exp_over_tilt[idir][idir_over];
+                iover++;
+            }
+        }
+        sampler3d.addPerturbation(current_oversampling, over_rot, over_tilt, over_psi);
+    }
 }
 
 void SamplingGrid::testGetShift()
 {
     //std::cout<<"Starting compare get shift.."<<std::endl;
-    for (int itrans = 0; itrans < exp_nr_trans; itrans++) {
-        for (int iover_trans = 0; iover_trans < exp_nr_over_trans; iover_trans++) {
+    for (int itrans = 0; itrans < nr_trans; itrans++) {
+        for (int iover_trans = 0; iover_trans < nr_over_trans; iover_trans++) {
             FDOUBLE shiftx1,shifty1;
             FDOUBLE shiftx2,shifty2,shiftx2Over,shifty2Over;
             getShiftxy(shiftx1, shifty1, itrans, iover_trans);
             getShiftxy(shiftx2, shifty2, shiftx2Over, shifty2Over, itrans, iover_trans);
             //std::cout<<"itrans = "<<itrans<<",iover_trans = "<<iover_trans<<std::endl;
-            if (fabs(shiftx1-shiftx2-shiftx2Over) > 1e-20 || fabs(shifty1-shifty2-shifty2Over) > 1e-20) {
+            if (fabs(shiftx1-shiftx2-shiftx2Over) > 1e-12 || fabs(shifty1-shifty2-shifty2Over) > 1e-12) {
+                std::cout<<"!!! "<<shiftx1<<" != "<<shiftx2<<" + "<<shiftx2Over<<","<<shifty1<<" != "<<shifty2<<" + "<<shifty2Over<<std::endl;
                 ERROR_REPORT("Wrong getShiftxy..");
-                //std::cout<<shiftx1<<" != "<<shiftx2<<" + "<<shiftx2Over<<","<<shifty1<<" != "<<shifty2<<" + "<<shifty2Over<<std::endl;
             }
             else{
                 //std::cout<<shiftx1<<" = "<<shiftx2<<" + "<<shiftx2Over<<","<<shifty1<<" = "<<shifty2<<" + "<<shifty2Over<<std::endl;
@@ -684,7 +1000,7 @@ namespace GTMSampling{
         
         ERROR_CHECK(bit_sum > 32, "bit sum out of range(32).");
         
-        double *X = new double [K*L];
+        double *X = vNew(double,K*L);
         int subIndex = 0;
         int tempIndex;
         
@@ -709,7 +1025,7 @@ namespace GTMSampling{
         L = 1;
         K = (int)infos[2];
         
-        double *X = new double [K*L];
+        double *X = vNew(double, K*L);
         
         for(int i = 0;i < K;i++)
             X[i] = infos[0] + (infos[1] - infos[0])/(K-1)*i;
@@ -732,7 +1048,7 @@ namespace GTMSampling{
         L = 2;
         K = (int)infos[2]*(int)infos[5];
         
-        double *X = new double [K*L];
+        double *X = vNew(double,K*L);
         int i,j;
         
         if(inv){
@@ -777,7 +1093,7 @@ namespace GTMSampling{
         L = 3;
         K = (int)infos[2]*(int)infos[5]*(int)infos[8];
         
-        double *X = new double [K*L];
+        double *X = vNew(double,K*L);
         int i1,i2,i3,i;
         if(inv){
             for(int k = 0;k < K;k++){
@@ -815,7 +1131,7 @@ namespace GTMSampling{
         L = 4;
         K = (int)infos[2]*(int)infos[5]*(int)infos[8]*(int)infos[11];
         
-        double *X = new double [K*L];
+        double *X = vNew(double,K*L);
         int i1,i2,i3,i4,i;
         if(inv){
             for(int k = 0;k < K;k++){
@@ -861,7 +1177,7 @@ namespace GTMSampling{
         L = 5;
         K = (int)infos[2]*(int)infos[5]*(int)infos[8]*(int)infos[11]*(int)infos[14];
         
-        double *X = new double [K*L];
+        double *X = vNew(double,K*L);
         int i1,i2,i3,i4,i5,i;
         if(inv){
             for(int k = 0;k < K;k++){
@@ -930,7 +1246,7 @@ namespace GTMSampling{
     //     std::cout<<"Nside = "<<healpix_base.Nside()<<std::endl;
     //     std::cout<<"Npix = "<<Npix<<std::endl;
     
-    //     double *X = (double*)_mm_malloc(sizeof(double)*2*Npix,64);
+    //     double *X = (double*)aMalloc(sizeof(double)*2*Npix,64);
     
     //     double zz,phi;
     //     for(int ipix = 0;ipix < Npix;ipix++){
@@ -990,6 +1306,276 @@ namespace GTMSampling{
  *  All comments concerning this program package may be sent to the
  *  e-mail address 'xmipp@cnb.csic.es'
  ***************************************************************************/
+/* Calculate an angular distance between two sets of Euler angles */
+FDOUBLE HealpixSampler::calculateAngularDistance(FDOUBLE rot1, FDOUBLE tilt1, FDOUBLE psi1,
+                                                 FDOUBLE rot2, FDOUBLE tilt2, FDOUBLE psi2)
+{
+    if (is_3D)
+    {
+        Matrix1D<FDOUBLE>  direction1(3), direction1p(3), direction2(3);
+        Euler_angles2direction(rot1, tilt1, direction1.data().data());
+        Euler_angles2direction(rot2, tilt2, direction2.data().data());
+        
+        // Find the symmetry operation where the Distance based on Euler axes is minimal
+        FDOUBLE min_axes_dist = 3600.;
+        FDOUBLE rot2p, tilt2p, psi2p;
+        Matrix2D<FDOUBLE> E1(3,3), E2(3,3);
+        Matrix1D<FDOUBLE> v1(3), v2(3);
+        for (int j = 0; j < R_repository.size(); j++)
+        {
+            Euler_apply_transf(L_repository[j], R_repository[j], rot2, tilt2, psi2, rot2p, tilt2p, psi2p);
+            // Distance based on Euler axes
+            Euler_angles2matrix(rot1, tilt1, psi1, E1);
+            Euler_angles2matrix(rot2p, tilt2p, psi2p, E2);
+            FDOUBLE axes_dist = 0;
+            for (int i = 0; i < 3; i++)
+            {
+                E1.getRow(i, v1);
+                E2.getRow(i, v2);
+                axes_dist += ACOSD(CLIP(dotProduct(v1, v2), -1., 1.));
+            }
+            axes_dist /= 3.;
+            
+            if (axes_dist < min_axes_dist)
+                min_axes_dist = axes_dist;
+            
+        }// for all symmetry operations j
+        
+        return min_axes_dist;
+    }
+    else
+    {
+        FDOUBLE diff = fabs(psi2 - psi1);
+        return realWRAP(diff, 0., 360.);
+    }
+}
+void HealpixSampler::selectOrientationsWithNonZeroPriorProbability(FDOUBLE prior_rot, FDOUBLE prior_tilt, FDOUBLE prior_psi,
+                                                                   FDOUBLE sigma_rot, FDOUBLE sigma_tilt, FDOUBLE sigma_psi,
+                                                                   std::vector<int> &pointer_dir_nonzeroprior, std::vector<FDOUBLE> &directions_prior,
+                                                                   std::vector<int> &pointer_psi_nonzeroprior, std::vector<FDOUBLE> &psi_prior,
+                                                                   FDOUBLE sigma_cutoff)
+{
+    pointer_dir_nonzeroprior.clear();
+    directions_prior.clear();
+    
+    if (is_3D)
+    {
+        // Loop over all directions
+        FDOUBLE sumprior = 0.;
+        // Keep track of the closest distance to prevent 0 orientations
+        FDOUBLE best_ang = 9999.;
+        int best_idir = -999;
+        for (int idir = 0; idir < nrPix; idir++)
+        {
+            // Any prior involving rot and/or tilt.
+            if (sigma_rot > 0. || sigma_tilt > 0. )
+            {
+                Matrix1D<FDOUBLE> prior_direction(3), my_direction(3), sym_direction(3), best_direction(3);
+                // Get the direction of the prior
+                Euler_angles2direction(prior_rot, prior_tilt, prior_direction.data().data());
+                
+                // Get the current direction in the loop
+                Euler_angles2direction(rot_angles[idir], tilt_angles[idir], my_direction.data().data());
+                
+                // Loop over all symmetry operators to find the operator that brings this direction nearest to the prior
+                FDOUBLE best_dotProduct = dotProduct(prior_direction, my_direction);
+                best_direction = my_direction;
+                for (int j = 0; j < R_repository.size(); j++)
+                {
+                    sym_direction =  L_repository[j] * (my_direction.transpose() * R_repository[j]).transpose();
+                    FDOUBLE my_dotProduct = dotProduct(prior_direction, sym_direction);
+                    if (my_dotProduct > best_dotProduct)
+                    {
+                        best_direction = sym_direction;
+                        best_dotProduct = my_dotProduct;
+                    }
+                }
+                
+                if (sigma_rot > 0. && sigma_tilt > 0.)
+                {
+                    
+                    FDOUBLE diffang = acosd( dotProduct(best_direction, prior_direction) );
+                    if (diffang > 180.) diffang = fabs(diffang - 360.);
+                    
+                    // Only consider differences within sigma_cutoff * sigma_rot
+                    if (diffang < sigma_cutoff * sigma_rot)
+                    {
+                        // TODO!!! If tilt is zero then any rot will be OK!!!!!
+                        FDOUBLE prior = gaussian1D(diffang, sigma_rot, 0.);
+                        pointer_dir_nonzeroprior.push_back(idir);
+                        directions_prior.push_back(prior);
+                        sumprior += prior;
+                    }
+                    
+                    // Keep track of the nearest direction
+                    if (diffang < best_ang)
+                    {
+                        best_idir = idir;
+                        best_ang = diffang;
+                    }
+                }
+                else if (sigma_rot > 0.)
+                {
+                    FDOUBLE best_rot, best_tilt;
+                    
+                    Euler_direction2angles(best_direction.data().data(), best_rot, best_tilt);
+                    FDOUBLE diffrot = fabs(best_rot - prior_rot);
+                    if (diffrot > 180.) diffrot = fabs(diffrot - 360.);
+                    
+                    // Only consider differences within sigma_cutoff * sigma_rot
+                    if (diffrot < sigma_cutoff * sigma_rot)
+                    {
+                        FDOUBLE prior = gaussian1D(diffrot, sigma_rot, 0.);
+                        pointer_dir_nonzeroprior.push_back(idir);
+                        directions_prior.push_back(prior);
+                        sumprior += prior;
+                    }
+                    
+                    // Keep track of the nearest direction
+                    if (diffrot < best_ang)
+                    {
+                        best_idir = idir;
+                        best_ang = diffrot;
+                    }
+                    
+                }
+                else if (sigma_tilt > 0.)
+                {
+                    
+                    FDOUBLE best_rot, best_tilt;
+                    
+                    Euler_direction2angles(best_direction.data().data(), best_rot, best_tilt);
+                    FDOUBLE difftilt = fabs(best_tilt - prior_tilt);
+                    if (difftilt > 180.) difftilt = fabs(difftilt - 360.);
+                    
+                    // Only consider differences within sigma_cutoff * sigma_tilt
+                    if (difftilt < sigma_cutoff * sigma_tilt)
+                    {
+                        FDOUBLE prior = gaussian1D(difftilt, sigma_tilt, 0.);
+                        pointer_dir_nonzeroprior.push_back(idir);
+                        directions_prior.push_back(prior);
+                        sumprior += prior;
+                    }
+                    
+                    // Keep track of the nearest direction
+                    if (difftilt < best_ang)
+                    {
+                        best_idir = idir;
+                        best_ang = difftilt;
+                    }
+                    
+                }
+                
+            } // end if any prior involving rot and/or tilt
+            else
+            {
+                // If no prior on the directions: just add all of them
+                pointer_dir_nonzeroprior.push_back(idir);
+                directions_prior.push_back(1.);
+                sumprior += 1.;
+            }
+            
+        } // end for idir
+        
+        
+        //Normalise the prior probability distribution to have sum 1 over all psi-angles
+        for (int idir = 0; idir < directions_prior.size(); idir++)
+            directions_prior[idir] /= sumprior;
+        
+        // If there were no directions at all, just select the single nearest one:
+        if (directions_prior.size() == 0)
+        {
+            if (best_idir < 0)
+                ERROR_REPORT("HealpixSampler::selectOrientationsWithNonZeroPriorProbability BUG: best_idir < 0");
+            pointer_dir_nonzeroprior.push_back(best_idir);
+            directions_prior.push_back(1.);
+        }
+        
+#ifdef  DEBUG_SAMPLING
+        writeNonZeroPriorOrientationsToBild("orients_local.bild", prior_rot, prior_tilt, pointer_dir_nonzeroprior, "0 0 1", 0.023);
+        std::cerr << " directions_prior.size()= " << directions_prior.size() << " pointer_dir_nonzeroprior.size()= " << pointer_dir_nonzeroprior.size() << std::endl;
+        std::cerr << " sumprior= " << sumprior << std::endl;
+        char c;
+        std::cerr << "Written orients_local.bild for prior on angles ("<<prior_rot<<","<<prior_tilt<<") Press any key to continue.." << std::endl;
+        std::cin >> c;
+#endif
+        
+        
+    }
+    else
+    {
+        pointer_dir_nonzeroprior.push_back(0);
+        directions_prior.push_back(1.);
+    }
+    
+    
+    // Psi-angles
+    pointer_psi_nonzeroprior.clear();
+    psi_prior.clear();
+    
+    FDOUBLE sumprior = 0.;
+    FDOUBLE best_diff = 9999.;
+    int best_ipsi = -999;
+    for (int ipsi = 0; ipsi < nrPsi; ipsi++)
+    {
+        if (sigma_psi > 0.)
+        {
+            FDOUBLE diffpsi = fabs(psi_angles[ipsi] - prior_psi);
+            if (diffpsi > 180.) diffpsi = fabs(diffpsi - 360.);
+            
+            // Only consider differences within sigma_cutoff * sigma_psi
+            if (diffpsi < sigma_cutoff * sigma_psi)
+            {
+                FDOUBLE prior = gaussian1D(diffpsi, sigma_psi, 0.);
+                pointer_psi_nonzeroprior.push_back(ipsi);
+                psi_prior.push_back(prior);
+                sumprior += prior;
+                
+                // TMP DEBUGGING
+                if (prior == 0.)
+                {
+                    std::cerr << " psi_angles[ipsi]= " << psi_angles[ipsi] << " prior_psi= " << prior_psi << " orientational_prior_mode= " << orientational_prior_mode << std::endl;
+                    std::cerr << " diffpsi= " << diffpsi << " sigma_cutoff= " << sigma_cutoff << " sigma_psi= " << sigma_psi << std::endl;
+                    ERROR_REPORT("prior on psi is zero!");
+                }
+                
+            }
+            // Keep track of the nearest sampling point
+            if (diffpsi < best_diff)
+            {
+                best_ipsi = ipsi;
+                best_diff = diffpsi;
+            }
+        }
+        else
+        {
+            pointer_psi_nonzeroprior.push_back(ipsi);
+            psi_prior.push_back(1.);
+            sumprior += 1.;
+        }
+    }
+    // Normalise the prior probability distribution to have sum 1 over all psi-angles
+    for (int ipsi = 0; ipsi < psi_prior.size(); ipsi++)
+        psi_prior[ipsi] /= sumprior;
+    
+    // If there were no directions at all, just select the single nearest one:
+    if (psi_prior.size() == 0)
+    {
+        if (best_ipsi < 0)
+            ERROR_REPORT("HealpixSampling::selectOrientationsWithNonZeroPriorProbability BUG: best_ipsi < 0");
+        pointer_psi_nonzeroprior.push_back(best_ipsi);
+        psi_prior.push_back(1.);
+    }
+    
+    
+#ifdef  DEBUG_SAMPLING
+    std::cerr << " psi_angles.size()= " << psi_angles.size() << " psi_step= " << psi_step << std::endl;
+    std::cerr << " psi_prior.size()= " << psi_prior.size() << " pointer_psi_nonzeroprior.size()= " << pointer_psi_nonzeroprior.size() << " sumprior= " << sumprior << std::endl;
+#endif
+    
+    
+}
+
 void HealpixSampler::writeAllOrientationsToBild(std::string fn_bild, std::string rgb, FDOUBLE size)
 {
     std::ofstream out;
@@ -1583,7 +2169,7 @@ void HealpixSampler::removeSymmetryEquivalentPointsGeometric(const int symmetry,
     else if (symmetry  == pg_I5)
     {//OK
         std::cerr << "ERROR: Symmetry pg_I5 not implemented" << std::endl;
-        exit(0);
+		EXIT_ABNORMALLY;
     }
     else if (symmetry  == pg_IH || symmetry  == pg_I2H)
     {//OK
@@ -1739,12 +2325,12 @@ void HealpixSampler::removeSymmetryEquivalentPointsGeometric(const int symmetry,
     else if (symmetry  == pg_I5H)
     {//OK
         std::cerr << "ERROR: pg_I5H Symmetry not implemented" << std::endl;
-        exit(0);
+		EXIT_ABNORMALLY;
     }
     else
     {
         std::cerr << "ERROR: Symmetry " << symmetry  << "is not known" << std::endl;
-        exit(0);
+		EXIT_ABNORMALLY;
     }
     
     

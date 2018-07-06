@@ -40,11 +40,12 @@ public:
         if (ptr != nullptr) freeMemory(ptr, inHBM);ptr = nullptr;
         dimx = 0;dimy = 0;dimz = 0;dimyx = 0;dimzyx = 0;
     }
-    T* wptr(){return ptr;}
+	T const* rptr() { return ptr; }
+	T*       wptr() { return ptr; }
     virtual T& operator()(size_t k,size_t i,size_t j) = 0;
     virtual void fill(T t) = 0;
     virtual void zero()  = 0;
-    void writeToDisk(std::string fn){
+    void writeToDisk(std::string fn,bool do_fini = true){
         FILE* pFile;
         ERROR_CHECK((pFile = fopen((fn+".vol").c_str(), "wb")) == NULL,"open file fail.");
         ERROR_CHECK(fwrite(&dimx, sizeof(size_t), 1, pFile) != 1,"write file fail");
@@ -54,9 +55,9 @@ public:
         ERROR_CHECK(fwrite(&dimzyx, sizeof(size_t), 1, pFile) != 1,"write file fail");
         ERROR_CHECK(fwrite((char*)ptr, dimzyx*sizeof(T), 1, pFile) != 1,"write file fail");
         fclose(pFile);
-        fini();
+        if(do_fini) fini();
     }
-    void readFromDisk(std::string fn){
+    void readFromDisk(std::string fn,bool do_init = true){
         FILE* pFile;
         ERROR_CHECK((pFile = fopen((fn+".vol").c_str(), "rb")) == NULL,"open file fail.");
         ERROR_CHECK(fread(&dimx, sizeof(size_t), 1, pFile) != 1,"write file fail");
@@ -64,8 +65,8 @@ public:
         ERROR_CHECK(fread(&dimz, sizeof(size_t), 1, pFile) != 1,"write file fail");
         ERROR_CHECK(fread(&dimyx, sizeof(size_t), 1, pFile) != 1,"write file fail");
         ERROR_CHECK(fread(&dimzyx, sizeof(size_t), 1, pFile) != 1,"write file fail");
-        assert(inHBM==false);inHBM==false;
-        ptr = (T*)allocMemory(sizeof(T)*dimzyx, 64, inHBM);
+        /*assert(inHBM==false);inHBM==false;*/
+        if(do_init) ptr = (T*)allocMemory(sizeof(T)*dimzyx, 64, inHBM, __FILE__, __LINE__);
         ERROR_CHECK(fread((char*)ptr, dimzyx*sizeof(T), 1, pFile) != 1,"write file fail");
         fclose(pFile);
     }
@@ -80,7 +81,7 @@ public:
         this->dimx = _dimx;this->dimy = _dimy;this->dimz = _dimz;
         this->dimyx = _dimy*_dimx;this->dimzyx = _dimz*_dimy*_dimx;
         this->inHBM = _inHBM;
-        this->ptr = (T*)allocMemory(sizeof(T)*_dimx*_dimy*_dimz, 64, this->inHBM);
+        this->ptr = (T*)allocMemory(sizeof(T)*_dimx*_dimy*_dimz, 64, this->inHBM, __FILE__, __LINE__);
         fill(0.);
     }
     void fill(T v){
@@ -103,7 +104,7 @@ public:
         this->dimx = _dimx;this->dimy = _dimy;this->dimz = _dimz;
         this->dimyx = _dimy*_dimx;this->dimzyx = _dimz*_dimy*_dimx;
         this->inHBM = _inHBM;
-        this->ptr = (MKL_Complex16*)allocMemory(sizeof(MKL_Complex16)*_dimx*_dimy*_dimz, 64, this->inHBM);
+        this->ptr = (MKL_Complex16*)allocMemory(sizeof(MKL_Complex16)*_dimx*_dimy*_dimz, 64, this->inHBM, __FILE__, __LINE__);
         MKL_Complex16 v;
         v.real = v.imag = 0;
         fill(v);
@@ -129,7 +130,7 @@ public:
         this->dimx = _dimx;this->dimy = _dimy;this->dimz = _dimz;
         this->dimyx = _dimy*_dimx;this->dimzyx = _dimz*_dimy*_dimx;
         this->inHBM = _inHBM;
-        this->ptr = (MKL_Complex8*)allocMemory(sizeof(MKL_Complex8)*_dimx*_dimy*_dimz, 64, this->inHBM);
+        this->ptr = (MKL_Complex8*)allocMemory(sizeof(MKL_Complex8)*_dimx*_dimy*_dimz, 64, this->inHBM, __FILE__, __LINE__);
         MKL_Complex8 v;
         v.real = v.imag = 0;
         fill(v);
@@ -355,7 +356,7 @@ public:
         assert(_dimy > 0);
         dimy = _dimy;length = dimy;
         inHBM = _inHBM;
-        ptr = (T*)allocMemory(sizeof(T)*length, 64, inHBM);
+        ptr = (T*)allocMemory(sizeof(T)*length, 64, inHBM, __FILE__, __LINE__);
     }
     void fini(){
         if (ptr) freeMemory(ptr, inHBM);ptr = nullptr;inHBM = false;
@@ -406,7 +407,7 @@ public:
         dimx_pad = ( ( (_dimx*sizeof(T)+63) / 64 ) * 64 ) / sizeof(T);
         length = dimy*dimx_pad;
         inHBM = _inHBM;
-        ptr = (T*)allocMemory(sizeof(T)*length, 64, inHBM);
+        ptr = (T*)allocMemory(sizeof(T)*length, 64, inHBM, __FILE__, __LINE__);
     }
     void fini(){
         if (ptr) freeMemory(ptr, inHBM);ptr = nullptr;inHBM = false;
@@ -464,7 +465,7 @@ public:
         dimx_pad = ( ( (_dimx*sizeof(T)+63) / 64) * 64 ) / sizeof(T);
         length = dimz*dimy*dimx_pad;
         inHBM = _inHBM;
-        ptr = (T*)allocMemory(sizeof(T)*length, 64, inHBM);
+        ptr = (T*)allocMemory(sizeof(T)*length, 64, inHBM, __FILE__, __LINE__);
     }
     void fini(){
         if (ptr) freeMemory(ptr, inHBM);ptr = nullptr;inHBM = false;

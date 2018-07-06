@@ -28,11 +28,10 @@
 
 #define JN_IS_COMPLEX(_type) jn_is_complex<typename jn_array_val<_type>::type>::value
 
-/**
 #if defined(_WIN32)
 static auto strtok_r = strtok_s;
 #endif
-**/
+
 //#define JN_SHOW_INFO
 
 #ifdef JN_SHOW_INFO

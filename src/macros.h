@@ -44,16 +44,9 @@
 #ifndef MACROS_H_
 #define MACROS_H_
 
-#ifndef _CYGWIN
-#ifdef __APPLE__
-#include <limits.h>
-#elif defined(_WIN32)
-//do nothing
-#else
-#include <values.h>
-#endif
-#endif
+#include "./util.h"
 
+//#define FLOAT_PRECISION
 // precision
 #ifdef FLOAT_PRECISION
 #define FDOUBLE float
@@ -68,6 +61,9 @@
 #define MAXFLOAT  1e30
 #endif
 
+//#ifndef FLT_EPSILON
+//#define FLT_EPSILON 1.19209e-07
+//#endif
 
 #ifndef PI
 #define PI 3.14159265358979323846
@@ -138,7 +134,7 @@
  * output = ... -2 -2 -2 -2 -2 -2 -2 -1 0 1 2 2 2 2 2 2 2 ...
  * @endcode
  */
-//#define CLIP(x, x0, xF) (((x) < (x0)) ? (x0) : (((x) > (xF)) ? (xF) : (x)))
+#define CLIP(x, x0, xF) (((x) < (x0)) ? (x0) : (((x) > (xF)) ? (xF) : (x)))
 
 /** Wrapping for integers
  *
@@ -175,6 +171,8 @@
 /** Radians to degrees **/
 #define RAD2DEG(r) ((r) * 180 / PI)
 
+/** ArcCosine in degrees **/
+#define ACOSD(x) acos((x)) * 180. / PI
 
 /** big-endian and little-endian conveter**/
 #define SWAP32(x) ( (((x)&0x000000FF)<<24) | (((x)&0x0000FF00)<<8) | (((x)&0x00FF0000)>>8) | (((x)&0xFF000000)>>24) )

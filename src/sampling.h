@@ -36,7 +36,13 @@
 
 typedef std::vector< std::vector<FDOUBLE> > Vector2d;
 typedef std::vector<FDOUBLE> 				Vector1d;
-
+struct Shift { 
+	double shift;
+	int status;/*-1,1,0*/
+	Shift() {}
+	Shift(double shift, int status) : shift(shift), status(status) {}
+};
+typedef std::pair<Shift, Shift> XYShift;
 // turn off sampling 3D
 #define SAMPLING3D
 
@@ -75,10 +81,11 @@ public:
     std::vector<FDOUBLE> translations_x;
     std::vector<FDOUBLE> translations_y;
     // shift image twice to reduce memory traffic
-    std::vector<std::pair<int, int>> single_translations_index;
     std::vector<FDOUBLE> single_translations;
+    std::vector<int> single_translations_x_index;
+    std::vector<int> single_translations_y_index;
     int nrTrans;
-    // rotation
+	// rotation
     FDOUBLE psi_step;
     std::vector<FDOUBLE> psi_angles;
     int nrPsi;
@@ -91,6 +98,7 @@ public:
     // adaptive_oversampling = 1,2,3,4,5
 #ifdef SAMPLING3D
     Healpix_Base healpix_base;
+    int orientational_prior_mode;
 #endif
     int healpix_order;
     bool is_3D;
@@ -109,7 +117,11 @@ public:
     ~HealpixSampler();
     
     void initialize(FDOUBLE _offset_step = -1.,FDOUBLE _offset_range = -1.,FDOUBLE _psi_step = -1,
-                    int _order = -1,std::string _fn_sym = "C1");
+                    int _order = -1,std::string _fn_sym = "C1",int prior_mode = NOPRIOR);
+    
+    void setTranslations(FDOUBLE offset_step = -1., FDOUBLE offset_range = -1.);
+    
+    void setOrientations(int _order = -1., FDOUBLE _psi_step = -1.);
     
     void resetRandomlyPerturbedSampling();
     
@@ -120,6 +132,8 @@ public:
     size_t NrTrans(int oversampling_order = 0) const;
     
     size_t NrPoints(int oversampling_order) const;
+    
+    double getTranslationalSampling(int adaptive_oversampling) const;
     
     double getAngularSampling(int adaptive_oversampling = 0) const;
     
@@ -142,8 +156,17 @@ public:
                                         Vector1d& trans_x_over,Vector1d& trans_y_over) const;
     
     //
-    void getOrientations(int idir,int ipsi,int oversampling_order,FDOUBLE* over_psi,
-                         FDOUBLE* over_rot = nullptr,FDOUBLE* over_tilt = nullptr) const;
+    void getAllSingleTranslationsAndOverTrans(int oversampling_order,std::map<double,int>& exp_positive_shift_index,
+                                              std::vector<XYShift>& exp_trans_xyshift,Vector1d& trans_x_over,Vector1d& trans_y_over) const;
+    
+    //
+    void getOrientations2D(int ipsi,int oversampling_order,FDOUBLE* over_psi) const;
+    
+    //
+    void addPerturbation(int oversampling_order,FDOUBLE* over_rot,FDOUBLE* over_tilt,FDOUBLE* over_psi) const;
+    //
+    void getOrientations3D(int idir,int ipsi,int oversampling_order,FDOUBLE* over_psi,
+                           FDOUBLE* over_rot,FDOUBLE* over_tilt) const;
     
     //
     void getAllTranslations(int oversampling_order, FDOUBLE* my_translations_x, FDOUBLE* my_translations_y) const;
@@ -154,7 +177,7 @@ public:
                             Vector2d& my_translations_y) const;
     
     // 2D
-    void getAllOrientations(int oversampling_order,FDOUBLE* my_psi) const;
+    void getAllOrientations(int oversampling_order,Vector2d& my_psi) const;
     
     // 3D
     void getAllOrientations(int oversampling_order,
@@ -162,6 +185,19 @@ public:
                             Vector2d& my_rot,
                             Vector2d& my_tilt) const;
     
+    
+    // Calculate an angular distance between two sets of Euler angles
+    FDOUBLE calculateAngularDistance(FDOUBLE rot1, FDOUBLE tilt1, FDOUBLE psi1,
+                                     FDOUBLE rot2, FDOUBLE tilt2, FDOUBLE psi2);
+    
+    // Select all orientations with zero prior probabilities
+    // store all these in the vectors pointer_dir_nonzeroprior and pointer_psi_nonzeroprior
+    // Also precalculate their prior probabilities and store in directions_prior and psi_prior
+    void selectOrientationsWithNonZeroPriorProbability(	FDOUBLE prior_rot, FDOUBLE prior_tilt, FDOUBLE prior_psi,
+                                                        FDOUBLE sigma_rot, FDOUBLE sigma_tilt, FDOUBLE sigma_psi,
+                                                        std::vector<int> &pointer_dir_nonzeroprior, std::vector<FDOUBLE> &directions_prior,
+                                                        std::vector<int> &pointer_psi_nonzeroprior, std::vector<FDOUBLE> &psi_prior,
+                                                        FDOUBLE sigma_cutoff = 3.);
     // Eliminate symmetry-equivalent points from the sampling_points_vector and sampling_points_angles vectors
     // This function first calls removeSymmetryEquivalentPointsGeometric,
     // and then checks each point versus all others to calculate an angular distance
@@ -189,47 +225,79 @@ public:
     void writeOutSampling(std::string fn_sampling);
     
     //
-    void readFromSampling(std::string fn_sampling);
+    void readFromSampling(std::string fn_sampling,bool debug_flag = false);
 };
-
 
 class SamplingGrid
 {
-public:
-    Vector2d exp_over_trans_x;
-    Vector2d exp_over_trans_y;
-    Vector2d exp_over_psi;
+#define GRIDSIZE \
+    ELT(int,	nr_trans,				-1	)	SEP \
+    ELT(int,	nr_dir,					-1	)	SEP \
+    ELT(int,	nr_psi,					-1	)	SEP \
+    ELT(int,	nr_over_trans,			-1	)	SEP \
+    ELT(int,	nr_over_rot,			-1	) 	SEP \
+	ELT(int,	adaptive_oversampling,	-1	)	SEP \
+	ELT(int,	current_oversampling,	-1	) // end of macro
+private:
     Vector2d exp_over_tilt;
     Vector2d exp_over_rot;
+    VectorOfArray2d<FDOUBLE> thread_over_psi;
+    VectorOfArray2d<FDOUBLE> thread_over_tilt;
+    VectorOfArray2d<FDOUBLE> thread_over_rot;
+    // local search
+    std::map< std::pair<int, int>, std::vector<FDOUBLE> > pdf_orientation_for_nonzero_orientations;// each image's pdf_orientation
+    std::vector< std::vector<int> > pointer_dir_nonzeroprior;
+    std::vector< std::vector<FDOUBLE> > directions_prior;
+    std::vector< std::vector<int> > pointer_psi_nonzeroprior;
+    std::vector< std::vector<FDOUBLE> > psi_prior;
+    //
+#define ELT(T,N,V) T N;
+#define SEP 
+    GRIDSIZE
+#undef ELT
+#undef SEP
+public:
+    Vector2d exp_over_psi;
+    Vector2d exp_over_trans_x;
+    Vector2d exp_over_trans_y;
     Vector1d exp_trans_x;
     Vector1d exp_trans_y;
     Vector1d exp_trans_x_over;
     Vector1d exp_trans_y_over;
-    // single translation(~exp_trans_x[itrans] = exp_single_trans[exp_single_trans_index[itrans].x])
-    Vector1d exp_single_trans;
-    std::vector<std::pair<int, int>> exp_single_trans_index;
+    // single translation(~exp_trans_x[itrans] = exp_single_trans[exp_single_trans_x_index[itrans]])
+    std::map<double,int> exp_positive_shift_index;
+    std::vector<XYShift> exp_trans_xyshift;
     //
-    int exp_nr_trans,exp_nr_dir,exp_nr_psi,exp_nr_over_trans,exp_nr_over_rot;
-    int adaptive_oversampling,current_oversampling;
-    SamplingGrid():	exp_nr_trans(0),exp_nr_dir(0),exp_nr_psi(0),exp_nr_over_trans(0),exp_nr_over_rot(0),
-    adaptive_oversampling(0),current_oversampling(0){}
+public:
+#define ELT(T,N,V) N(V)
+#define SEP ,
+    SamplingGrid(): GRIDSIZE {}
+#undef ELT
+#undef SEP
     ~SamplingGrid(){}
     void initialize(HealpixSampler& sampler3d,int _adaptive_oversampling);
     void finalize();
-    void computeGrid(HealpixSampler& sampler3d,int _current_oversampling);
-    inline void getProjectMatrix(FDOUBLE A[][3],int idir,int ipsi,int iover_rot)
-    {
-        assert(iover_rot < exp_nr_over_rot);
-        assert(idir < exp_nr_dir);
-        assert(ipsi < exp_nr_psi);
-        int iorient = idir*exp_nr_psi+ipsi;
-        Euler_angles2matrix(exp_over_rot[iorient][iover_rot],exp_over_tilt[iorient][iover_rot],
-                            exp_over_psi[iorient][iover_rot], A);
+    void computeGrid2D(HealpixSampler& sampler2d,int _current_oversampling);
+    void computeGrid3D(HealpixSampler& sampler3d,int _current_oversampling);
+    void selectOrientationsForLocalSearch(HealpixSampler& sampler3d,FDOUBLE sigma_rot,FDOUBLE sigma_tilt,FDOUBLE sigma_psi,
+                                          const MetaDataElem* exp_metadata,int nr_images);
+    void setOrientation(HealpixSampler& sampler3d,int _current_oversampling,int idir,int ipsi,
+                        FDOUBLE* &over_psi,FDOUBLE* &over_rot,FDOUBLE* &over_tilt);
+    inline bool isSignificantOrientation(int idir,int ipsi) const {
+        auto it = pdf_orientation_for_nonzero_orientations.find(std::make_pair(idir, ipsi));
+        if (it == pdf_orientation_for_nonzero_orientations.end()) return false;
+        else return true;
+    }
+    inline const std::vector<FDOUBLE>* pdfOrientationForNonzeroOrient(int idir,int ipsi) const {
+        auto it = pdf_orientation_for_nonzero_orientations.find(std::make_pair(idir, ipsi));
+        if (it == pdf_orientation_for_nonzero_orientations.end())
+            ERROR_REPORT("idir:"+std::to_string((long long)idir)+"ispi:"+std::to_string((long long)ipsi)+" should be found.");
+        return &it->second;
     }
     inline void getShiftxy(FDOUBLE& shiftx,FDOUBLE& shifty,int itrans,int iover_trans)
     {
-        assert(itrans < exp_nr_trans);
-        assert(iover_trans < exp_nr_over_trans);
+        assert(itrans < nr_trans);
+        assert(iover_trans < nr_over_trans);
         shiftx = exp_over_trans_x[itrans][iover_trans];
         shifty = exp_over_trans_y[itrans][iover_trans];
     }
@@ -237,14 +305,19 @@ public:
                            FDOUBLE& shiftxOver,FDOUBLE& shiftyOver,
                            int itrans,int iover_trans)
     {
-        assert(itrans < exp_nr_trans);
-        assert(iover_trans < exp_nr_over_trans);
+        assert(itrans < nr_trans);
+        assert(iover_trans < nr_over_trans);
         shiftx = exp_trans_x[itrans];
         shifty = exp_trans_y[itrans];
         shiftxOver = exp_trans_x_over[iover_trans];
         shiftyOver = exp_trans_y_over[iover_trans];
     }
     void testGetShift();
+#define ELT(T,N,V) inline T exp_##N(){return N;}
+#define SEP
+    GRIDSIZE
+#undef ELT
+#undef SEP
 };
 
 // info is var_num*3 matrix each row store basic info(start,end,order(indexBits))

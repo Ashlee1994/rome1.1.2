@@ -23,13 +23,6 @@
 #ifndef MATRIX_H_
 #define MATRIX_H_
 
-#include <cassert>
-#include <vector>
-#include <iostream>
-#include <iomanip>      // std::setw
-#include <cmath>
-#include <cstring>
-
 #include "./macros.h"
 #include "./error.h"
 //
@@ -51,7 +44,7 @@ public:
     Matrix1D(const Matrix1D& rhs) = default;
     ~Matrix1D(){__data.resize(0);}
     void resize(int dim){
-        assert(__data.size()==0);
+        //assert(__data.size()==0);
         __data.resize(dim);
         __dim=dim;
     }
@@ -101,6 +94,10 @@ public:
     void operator=(Matrix1D<T> const & rhs) {
         __dim = rhs.__dim;__isrow = rhs.__isrow;__data = rhs.__data;
     }
+    T& operator[](int index) {
+        assert(index<__dim);
+        return __data[index];
+    }
 };
 #define XX(MAT) MAT(0)
 #define YY(MAT) MAT(1)
@@ -133,10 +130,10 @@ private:
 	T  data(int y, int x) const { return __data[y*__dimx + x]; }
 	void initUndefined(int Ydim, int Xdim) {
 		if (__dimy == Ydim && __dimx == Xdim) return;
-		if(!__data) delete[] __data; __data = nullptr;
+		vDelete(__data);
 		__dimy = Ydim; __dimx = Xdim; __dim = __dimy*__dimx;
 		if (__dim == 0) return;
-		__data = new T[__dim];
+		__data = vNew(T,__dim);
 	}
 public:
     Matrix2D(                  ) : __data(nullptr), __dimy(0), __dimx(0), __dim(0) { }
@@ -147,9 +144,14 @@ public:
         data(1,0) = v[1][0]; data(1,1) = v[1][1]; data(1,2) = v[1][2];
         data(2,0) = v[2][0]; data(2,1) = v[2][1]; data(2,2) = v[2][2];
     }
-
+    Matrix2D(const Matrix2D<T>& rhs){
+        __dimy = rhs.__dimy;__dimx = rhs.__dimx;__dim = rhs.__dim;
+        __data = vNew(T,__dim);
+        for (int i = 0; i < __dim; i++) __data[i] = rhs.__data[i];
+    }
     ~Matrix2D() {
-		if(!__data) delete[] __data; __data = nullptr; __dimy = __dimx = __dim = 0;
+		vDelete(__data);
+		__dimy = __dimx = __dim = 0;
 	}
 
     void resize(int Ydim, int Xdim){
@@ -158,7 +160,7 @@ public:
             initZeros(Ydim, Xdim);
             return;
         }
-        auto oldY = __dimy; auto oldX = __dimx;auto old = new T[oldY*oldX];
+        auto oldY = __dimy; auto oldX = __dimx; auto old = vNew(T,oldY*oldX);
         for (int i = 0; i < oldY*oldX; i++) old[i] = __data[i];
 		initUndefined(Ydim, Xdim);
         for (int y = 0; y < __dimy; y++) {
@@ -166,7 +168,7 @@ public:
 				data(y,x) = (y < oldY && x < oldX) ? old[y*oldX + x] : 0;
             }
         }
-        delete[] old;
+        vDelete(old);
     }
 
     void initIdentity(){
@@ -222,7 +224,8 @@ public:
 		for (int i = 0; i < __dim; i++) __data[i] = rhs.__data[i];
     }
 
-    Matrix2D<T> operator*(Matrix2D<T> const & rhs) {
+    // matrix_2_d = matrix_2_d*matrix_2_d
+    Matrix2D<T> operator*(Matrix2D<T> const & rhs) const {
         assert(__dimx==__dimy);
         assert(__dimx == rhs.dimx());assert(__dimy == rhs.dimy());
         Matrix2D<T> result(__dimx,__dimy);
@@ -237,7 +240,7 @@ public:
     }
 
     // matrix_1_d = matrix_2_d*matrix_1_d
-    Matrix1D<T> operator*(Matrix1D<T> const & rhs) {
+    Matrix1D<T> operator*(Matrix1D<T> const & rhs) const {
         assert(rhs.isrow()==false);// column 1d array
         assert(__dimx == rhs.size());
         Matrix1D<T> result(__dimy);
@@ -267,6 +270,15 @@ public:
         return result;
     }
 
+    void getRow(int i, Matrix1D<T>& v) const
+    {
+        assert(i >= 0);
+        assert(i < __dimy);
+        for (int j = 0; j < __dimx; j++)
+            v[j] = data(i, j);
+        //v.setRow();
+    }
+    
     friend std::ostream& operator<<(std::ostream& os, Matrix2D<T> const & rhs) {
         os << std::endl;
 		for (int y = 0; y < rhs.dimy(); y++) {

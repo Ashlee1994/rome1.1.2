@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "../macros.h"
+#include "macros.h"
 #include "res_array.h"
 
 namespace resumap {

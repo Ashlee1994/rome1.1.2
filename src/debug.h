@@ -2,6 +2,7 @@
  *
  * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *			"Bevin R. Brett"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,18 +22,10 @@
 #ifndef _ROME_DEBUG
 #define _ROME_DEBUG
 
-#include <initializer_list>
-#include <string>
-#include <vector>
-#include <assert.h>
-#include <cmath>
-#include <iostream>
-#include <complex>
-#include <limits>
-#include <omp.h>
-#include "util.h"
+#include "./util.h"
 
-//
+
+ //
 // #define DATA_STREAM
 
 class cacheInvestigator{
@@ -91,8 +84,13 @@ private:
     class DoublePtr : public Ptr {
     public:
         double data_reduce[3];//minimum,average,maximum
-        DoublePtr(double* _data,int _len,char* _what,char* _file,int _line) :
-        Ptr(_data,_len,_what,_file,_line) {
+		static DoublePtr* make(double* _data, int _len, char* _what, char* _file, int _line) {
+#include "./util_heap_undefs.h"
+			return sNewA(DoublePtr,(_data, _len, _what, _file, _line));
+#include "./util_heap_defs.h"
+		}
+		DoublePtr(double* _data,int _len,char* _what,char* _file,int _line) 
+		  : Ptr(_data,_len,_what,_file,_line) {
             if (reduceDataLength) {
                 stat(_data,len,data_reduce[0],data_reduce[1],data_reduce[2]);
                 data = data_reduce;len = 3;
@@ -109,10 +107,15 @@ private:
     public:
         double* complex_SOA_data;
         double data_reduce[6];
-        DoubleComplexPtr(const std::complex<double>* _data,int _len,char* _what,char* _file,int _line)
+		static DoubleComplexPtr* make(const std::complex<double>* _data,int _len,char* _what,char* _file,int _line) {
+#include "./util_heap_undefs.h"
+			return sNewA(DoubleComplexPtr,(_data,_len,_what,_file,_line));
+#include "./util_heap_defs.h"
+		}
+		DoubleComplexPtr(const std::complex<double>* _data,int _len,char* _what,char* _file,int _line)
         {
             len = 2*_len;what = _what;file = _file;line = _line;
-            complex_SOA_data = (double*)_mm_malloc(sizeof(double)*len,64);
+            complex_SOA_data = (double*)aMalloc(sizeof(double)*len,64);
             // copy the real part
             for (int i = 0; i < _len; i++) complex_SOA_data[i] = _data[i].real();
             // copy the imag part
@@ -126,13 +129,18 @@ private:
             dataType = Double;
             dataTypeSize = sizeof(double);
         }
-        ~DoubleComplexPtr(){_mm_free(complex_SOA_data);}
+        ~DoubleComplexPtr(){aFree(complex_SOA_data);}
     };
     
     class FloatPtr : public Ptr {
     public:
         float data_reduce[3];//minimum,average,maximum
-        FloatPtr(float* _data,int _len,char* _what,char* _file,int _line) :
+		static FloatPtr* make(float* _data,int _len,char* _what,char* _file,int _line) {
+#include "./util_heap_undefs.h"
+			return sNewA(FloatPtr,(_data,_len,_what,_file,_line));
+#include "./util_heap_defs.h"
+		}
+		FloatPtr(float* _data,int _len,char* _what,char* _file,int _line) :
         Ptr(_data,_len,_what,_file,_line) {
             if (reduceDataLength) {
                 stat(_data,len,data_reduce[0],data_reduce[1],data_reduce[2]);
@@ -146,7 +154,12 @@ private:
     class IntPtr : public Ptr {
     public:
         int data_reduce[3];//minimum,average,maximum
-        IntPtr(int* _data,int _len,char* _what,char* _file,int _line) :
+		static IntPtr* make(int* _data,int _len,char* _what,char* _file,int _line) {
+#include "./util_heap_undefs.h"
+			return sNewA(IntPtr,(_data,_len,_what,_file,_line));
+#include "./util_heap_defs.h"
+		}
+		IntPtr(int* _data,int _len,char* _what,char* _file,int _line) :
         Ptr(_data,_len,_what,_file,_line) {
             if (reduceDataLength) {
                 stat(_data,len,data_reduce[0],data_reduce[1],data_reduce[2]);
@@ -160,7 +173,12 @@ private:
     class IntVar : public Ptr{
     public:
         int var;
-        IntVar(int _data,int _len,char* _what,char* _file,int _line)
+		static IntVar* make(int _data,int _len,char* _what,char* _file,int _line) {
+#include "./util_heap_undefs.h"
+			return sNewA(IntVar,(_data,_len,_what,_file,_line));
+#include "./util_heap_defs.h"
+		}
+		IntVar(int _data,int _len,char* _what,char* _file,int _line)
         {
             var = _data;
             data = &var;
@@ -173,7 +191,12 @@ private:
     class DoubleVar : public Ptr{
     public:
         double var;
-        DoubleVar(double _data,int _len,char* _what,char* _file,int _line)
+		static DoubleVar* make(double _data,int _len,char* _what,char* _file,int _line) {
+#include "./util_heap_undefs.h"
+			return sNewA(DoubleVar,(_data,_len,_what,_file,_line));
+#include "./util_heap_defs.h"
+		}
+		DoubleVar(double _data,int _len,char* _what,char* _file,int _line)
         {
             var = _data;
             data = &var;
@@ -208,28 +231,28 @@ public:
     void turnOn(){if(instream_fn!="NULL" || outstream_fn!="NULL") doDataStream = true;}
     void turnOff(){if(instream_fn!="NULL" || outstream_fn!="NULL") doDataStream = false;}
     inline void foutDouble(double* _data,int _len,char* _what,char* _file,int _line){
-        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(new DoublePtr(_data,_len,_what,_file,_line));
+        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(DoublePtr::make(_data,_len,_what,_file,_line));
     }
     inline void foutDoubleComplex(const std::complex<double>* _data,int _len,char* _what,char* _file,int _line){
-        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(new DoubleComplexPtr(_data,_len,_what,_file,_line));
+        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(DoubleComplexPtr::make(_data,_len,_what,_file,_line));
     }
     inline void foutDouble(double _data,char* _what,char* _file,int _line){
-        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(new DoubleVar(_data,1,_what,_file,_line));
+        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(DoubleVar::make(_data,1,_what,_file,_line));
     }
     inline void foutFloat(float* _data,int _len,char* _what,char* _file,int _line){
-        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(new FloatPtr(_data,_len,_what,_file,_line));
+        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(FloatPtr::make(_data,_len,_what,_file,_line));
     }
     inline void foutInt(int* _data,int _len,char* _what,char* _file,int _line){
-        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(new IntPtr(_data,_len,_what,_file,_line));
+        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(IntPtr::make(_data,_len,_what,_file,_line));
     }
     inline void foutInt(int _data,char* _what,char* _file,int _line){
-        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(new IntVar(_data,1,_what,_file,_line));
+        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(IntVar::make(_data,1,_what,_file,_line));
     }
     inline void foutInt(long _data,char* _what,char* _file,int _line){
-        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(new IntVar(int(_data),1,_what,_file,_line));
+        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(IntVar::make(int(_data),1,_what,_file,_line));
     }
     inline void foutInt(size_t _data,char* _what,char* _file,int _line){
-        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(new IntVar(int(_data),1,_what,_file,_line));
+        if(doDataStream&&NOT_IN_PARALLEL_REGION) cachedPtr.push_back(IntVar::make(int(_data),1,_what,_file,_line));
     }
     void flush(){
         // write the file
@@ -242,7 +265,7 @@ public:
                 for (auto& ptr : cachedPtr){
                     fwrite((char*)ptr->data,ptr->sizeoftype()*ptr->len,1,outstream_file);
                     stream_size += ptr->sizeoftype()*ptr->len;
-                    delete ptr;
+                    sDelete(ptr);
                 }
                 if (stream_size%(1024)==0) {
                     double size = stream_size/(1024.*1024.*1024.);
@@ -262,7 +285,7 @@ public:
                 double precision = 1e-9;
                 assert(cachedPtr.size()>0);
                 for (auto& ptr : cachedPtr){
-                    void* data = (void*)_mm_malloc(ptr->sizeoftype()*ptr->len,64);
+                    void* data = (void*)aMalloc(ptr->sizeoftype()*ptr->len,64);
                     int diffcounts;
                     fread((char*)data,ptr->sizeoftype()*ptr->len,1,instream_file);
                     switch (ptr->type()) {
@@ -278,7 +301,7 @@ public:
                         default:
                             break;
                     }
-                    _mm_free(data);
+                    aFree(data);
                     if (diffcounts!=0) {
                         std::cerr<<"!!!diff array..."<<ptr->what<<" in : "<<ptr->file<<" line : "<<ptr->line
                         		<<" diff percentage : "<< (double(diffcounts)/double(ptr->len))*100<<"%"<<std::endl;

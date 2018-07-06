@@ -33,43 +33,50 @@ class MLModel{
 public:
     //(Datatype,  Name                          ,Value      ,Size                       ,Index)
 #define MLMODEL_ELTS \
-    ELTONE(int      , ori_size                      , 0         , 1                         , 0   ) SEP \
-    ELTONE(int      , ori_Fsize                     , 0         , 1                         , 1   ) SEP \
-    ELTONE(int      , nr_classes                    , 0         , 1                         , 2   ) SEP \
-    ELTONE(int      , nr_groups                     , 0         , 1                         , 3   ) SEP \
-    ELTONE(int      , nr_directions                 , 1         , 1                         , 4   ) SEP \
-    ELTONE(FDOUBLE  , sigma2_offset                 , 3*3       , 1                         , 5   ) SEP \
-    ELTONE(FDOUBLE  , avg_norm_correction           , 1.0       , 1                         , 6   ) SEP \
-    ELTONE(FDOUBLE  , ave_Pmax                      , 0         , 1                         , 7   ) SEP \
-    ELTONE(FDOUBLE  , LL                            , 0         , 1                         , 8   ) SEP \
-    ELTONE(int      , orientational_prior_mode      , NOPRIOR   , 1                         , 9   ) SEP \
-    ELTVE2(FDOUBLE  , tau2_class                    , 0         , nr_classes*ori_Fsize      , 10  ) SEP \
-    ELTVE2(FDOUBLE  , sigma2_noise                  , 0         , nr_groups*ori_Fsize       , 11  ) SEP \
-    ELTVE2(FDOUBLE  , sigma2_class                  , 0         , nr_classes*ori_Fsize      , 12  ) SEP \
-    ELTVE2(FDOUBLE  , data_vs_prior_class           , 0         , nr_classes*ori_Fsize      , 13  ) SEP \
-    ELTVE2(FDOUBLE  , fsc_halves_class              , 0         , nr_classes*ori_Fsize      , 14  ) SEP \
-    ELTVE1(FDOUBLE  , scale_correction              , 0         , nr_groups                 , 15  ) SEP \
-    ELTVE1(FDOUBLE  , prior_offsetx_class           , 0         , nr_classes                , 16  ) SEP \
-    ELTVE1(FDOUBLE  , prior_offsety_class           , 0         , nr_classes                , 17  ) SEP \
-    ELTVE1(FDOUBLE  , pdf_class                     , 0         , nr_classes                , 18  ) SEP \
-    ELTVE2(FDOUBLE  , pdf_direction                 , 0         , nr_classes*nr_directions  , 19  ) SEP \
-    ELTVE1(int      , nr_particles_group            , 0         , nr_groups                 , 20  ) SEP \
-    /*  For the refinement of group intensity scales and bfactors */                                    \
-    /*  each group store weighted sums of experimental image times reference image */                   \
-    /*    as a function of resolution */                                                                \
-    ELTVE2(FDOUBLE  , wsum_signal_product_spectra   , 0         , nr_groups*ori_Fsize       , 21  ) SEP \
-    /* each group store weighted sums of squared reference as a function of resolution */               \
-    ELTVE2(FDOUBLE  , wsum_reference_power_spectra  , 0         , nr_groups*ori_Fsize       , 22  ) SEP \
-    ELTVE1(FDOUBLE  , wsum_sumw_group               , 0         , nr_groups                 , 23  ) SEP \
-    ELTONE(FDOUBLE  , wsum_LL                       , 0         , 1                         , 24  ) SEP \
-    ELTONE(FDOUBLE  , wsum_ave_Pmax                 , 0         , 1                         , 25  ) SEP \
-    ELTONE(FDOUBLE  , wsum_avg_norm_correction      , 0         , 1                         , 26  ) SEP \
-    ELTONE(FDOUBLE  , wsum_sigma2_offset            , 0         , 1                         , 27  ) SEP \
-    ELTVE2(FDOUBLE  , wsum_sigma2_noise             , 0         , nr_groups*ori_Fsize       , 28  ) SEP \
-    ELTVE1(FDOUBLE  , wsum_pdf_class                , 0         , nr_classes                , 29  ) SEP \
-    ELTVE1(FDOUBLE  , wsum_prior_offsetx_class      , 0         , nr_classes                , 30  ) SEP \
-    ELTVE1(FDOUBLE  , wsum_prior_offsety_class      , 0         , nr_classes                , 31  ) SEP \
-    ELTVE2(FDOUBLE  , wsum_pdf_direction            , 0         , nr_classes*nr_directions  , 32  ) // end of macro
+ELTONE(int      , ori_size                      , 0         , 1                         , 0   ) SEP \
+ELTONE(int      , ori_Fsize                     , 0         , 1                         , 1   ) SEP \
+ELTONE(int      , nr_classes                    , 0         , 1                         , 2   ) SEP \
+ELTONE(int      , nr_groups                     , 0         , 1                         , 3   ) SEP \
+ELTONE(int      , nr_directions                 , 1         , 1                         , 4   ) SEP \
+ELTONE(FDOUBLE  , sigma2_offset                 , 3*3       , 1                         , 5   ) SEP \
+ELTONE(FDOUBLE  , avg_norm_correction           , 1.0       , 1                         , 6   ) SEP \
+ELTONE(FDOUBLE  , ave_Pmax                      , 0         , 1                         , 7   ) SEP \
+ELTONE(FDOUBLE  , LL                            , 0         , 1                         , 8   ) SEP \
+ELTONE(int      , orientational_prior_mode      , NOPRIOR   , 1                         , 9   ) SEP \
+/* Variance angle for the orientational pdf */														\
+ELTONE(FDOUBLE	, sigma2_rot					, 0			, 1							, 10  ) SEP \
+ELTONE(FDOUBLE	, sigma2_tilt					, 0			, 1							, 11  ) SEP \
+ELTONE(FDOUBLE	, sigma2_psi					, 0			, 1							, 12  ) SEP \
+ELTVE2(FDOUBLE  , tau2_class                    , 0         , nr_classes*ori_Fsize      , 13  ) SEP \
+ELTVE2(FDOUBLE  , sigma2_noise                  , 0         , nr_groups*ori_Fsize       , 14  ) SEP \
+ELTVE2(FDOUBLE  , sigma2_class                  , 0         , nr_classes*ori_Fsize      , 15  ) SEP \
+ELTVE2(FDOUBLE  , data_vs_prior_class           , 0         , nr_classes*ori_Fsize      , 16  ) SEP \
+ELTVE2(FDOUBLE  , fsc_halves_class              , 0         , nr_classes*ori_Fsize      , 17  ) SEP \
+ELTVE1(FDOUBLE  , scale_correction              , 0         , nr_groups                 , 18  ) SEP \
+ELTVE1(FDOUBLE  , prior_offsetx_class           , 0         , nr_classes                , 19  ) SEP \
+ELTVE1(FDOUBLE  , prior_offsety_class           , 0         , nr_classes                , 20  ) SEP \
+ELTVE1(FDOUBLE  , pdf_class                     , 0         , nr_classes                , 21  ) SEP \
+ELTVE1(FDOUBLE  , acc_rot                     	, 0         , nr_classes                , 22  ) SEP \
+ELTVE1(FDOUBLE  , acc_trans                     , 0         , nr_classes                , 23  ) SEP \
+ELTVE2(FDOUBLE  , pdf_direction                 , 0         , nr_classes*nr_directions  , 24  ) SEP \
+ELTVE2(FDOUBLE	, orientability_contrib			, 0			, nr_classes*ori_Fsize		, 25  ) SEP \
+ELTVE1(int      , nr_particles_group            , 0         , nr_groups                 , 26  ) SEP \
+/*  For the refinement of group intensity scales and bfactors */                                    \
+/*  each group store weighted sums of experimental image times reference image */                   \
+/*    as a function of resolution */                                                                \
+ELTVE2(FDOUBLE  , wsum_signal_product_spectra   , 0         , nr_groups*ori_Fsize       , 27  ) SEP \
+/* each group store weighted sums of squared reference as a function of resolution */               \
+ELTVE2(FDOUBLE  , wsum_reference_power_spectra  , 0         , nr_groups*ori_Fsize       , 28  ) SEP \
+ELTVE1(FDOUBLE  , wsum_sumw_group               , 0         , nr_groups                 , 29  ) SEP \
+ELTONE(FDOUBLE  , wsum_LL                       , 0         , 1                         , 30  ) SEP \
+ELTONE(FDOUBLE  , wsum_ave_Pmax                 , 0         , 1                         , 31  ) SEP \
+ELTONE(FDOUBLE  , wsum_avg_norm_correction      , 0         , 1                         , 32  ) SEP \
+ELTONE(FDOUBLE  , wsum_sigma2_offset            , 0         , 1                         , 33  ) SEP \
+ELTVE2(FDOUBLE  , wsum_sigma2_noise             , 0         , nr_groups*ori_Fsize       , 34  ) SEP \
+ELTVE1(FDOUBLE  , wsum_pdf_class                , 0         , nr_classes                , 35  ) SEP \
+ELTVE1(FDOUBLE  , wsum_prior_offsetx_class      , 0         , nr_classes                , 36  ) SEP \
+ELTVE1(FDOUBLE  , wsum_prior_offsety_class      , 0         , nr_classes                , 37  ) SEP \
+ELTVE2(FDOUBLE  , wsum_pdf_direction            , 0         , nr_classes*nr_directions  , 38  ) // end of macro
     
 #define SEP
 #define ELTONE(T,N,V,S,I) T N;
@@ -96,7 +103,7 @@ public:
     ~MLModel(){};
     
     //
-    void initialize(int _ori_size,int _nr_classes,int _nr_groups,int _nr_directions);
+    void initialize(int _ori_size,int _nr_classes,int _nr_groups,int _nr_directions,double sigma2_angle = 0);
     
     //
     void finalize();
@@ -107,7 +114,7 @@ public:
     //
     template<typename T>
     void calculateSumOfPowerSpectraAndAverageImage(T& Mavg,std::vector<T>& images,bool do_zero_mask,
-                                                   const MetaDataTable& metadata,const MAPModel& mapModel)
+                                                   const MetaDataTable& metadata,int first_local_image,const MAPModel& mapModel)
     {
         Mavg.zero();
         if (images.size() == 0) return;
@@ -131,7 +138,7 @@ public:
         
         for (int iimage = 0; iimage < nr_local_images; iimage++)
         {
-            int igroup = metadata[iimage].GROUP_NO-1;
+            int igroup = metadata[iimage+first_local_image].GROUP_NO-1;
             // Copy the image (only needed if do_zero_mask, but since that is true, not optimized)
             //
             img_temp = images[iimage];
@@ -192,13 +199,16 @@ public:
     void initialiseDataVersusPrior(MAPModel& myMapModel,double tau2_fudge_factor);
     
     //
-    void writeOutModel(std::string fn_model,const MAPModel& mapModel,const MetaDataTable& metadata);
+    void initialisePdfDirection(int newsize);
+    
+    //
+    void writeOutModel(std::string fn_model,const MAPModel& mapModel,const MetaDataTable& metadata,int random_subset = -1);
     
     //
     void writeOutBild(std::string fn_class, MAPModel& mapModel, HealpixSampler& sampling);
     
     //
-    void readFromModel(std::string fn_model,MAPModel& mapModel);
+    void readFromModel(std::string fn_model,MAPModel& mapModel,bool debug_flag = false);
     
     // print needed space for MLModel data
     void printSpaceInfo(std::ostream &os);
@@ -212,7 +222,7 @@ public:
     void readFromDisk(std::string fn_ml_model);
     
     // reduce MLModel data for all nodes
-    void reduceData();
+    void reduceData(const MPI::Intracomm& currentWorld);
     
     //
     void broadcastData();

@@ -21,9 +21,7 @@
 #ifndef ERROR_H_
 #define ERROR_H_
 
-#include <exception>
-#include <iostream>
-#include <cassert>
+#include "./util.h"
 
 // Nans and infinities can propagate a long way before causing damage
 // Support for instrumenting the code to catch them soon after creation
@@ -82,7 +80,7 @@ void assertAllEltsZero(size_t len, const T* ptr) {
     for (size_t i = 0; i < len; i+=len/15) {		// BEVIN
         if (T(0) == ptr[i]) continue;
         std::cerr << "assertAllEltsZero failed" << std::endl;
-        exit(0);
+        bad_exit(1);
     }
 #else
     for (size_t i = 0; i < len; i++) {
@@ -94,27 +92,25 @@ void assertAllEltsZero(size_t len, const T* ptr) {
 // ----------------------------------------------------------------
 
 #ifndef ERROR_REPORT
-#define ERROR_REPORT(what) {throw rome_error(what,__FILE__,__LINE__);}
+#define ERROR_REPORT(what) { rome_error::assertFalse(what,__FILE__,__LINE__); }
 #endif
 
 #ifndef ERROR_CHECK
-#define ERROR_CHECK(condition,what) if(condition){ERROR_REPORT(what)}
+#define ERROR_CHECK(condition,what) if(condition) { ERROR_REPORT(what); }
 #endif
 
 //
 class rome_error { // : public std::exception
 public:
-    explicit rome_error( const char* _what_arg ,const char* _file, int _line) : what_arg(_what_arg),file(_file),line(_line) {
-        std::cout<<"Errors encountered, "<<what_arg<<" ,"<<file<<" ,"<<line<<std::endl;
-    }
-    explicit rome_error( const std::string& _what_arg ,const char* _file, int _line) : what_arg(_what_arg.c_str()),file(_file),line(_line) {
-        std::cout<<"Errors encountered, "<<what_arg<<" ,"<<file<<" ,"<<line<<std::endl;
-    }
+    explicit rome_error( const char*        _what_arg, const char* _file, int _line);
+    explicit rome_error( const std::string& _what_arg, const char* _file, int _line);
     ~rome_error(){}
-    const char* what() const /* noexcept */{return what_arg;}
+    const char* what() const /* noexcept */ { return what_arg; }
+	static void assertFalse(const char*        _what_arg, const char* _file, int _line);
+	static void assertFalse(const std::string& _what_arg, const char* _file, int _line);
 private:
     const char* what_arg;
-    int line;
+    int			line;
     const char* file;
 };
 

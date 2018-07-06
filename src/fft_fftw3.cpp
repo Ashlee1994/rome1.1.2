@@ -184,8 +184,8 @@ void FFTWTransformer::testCorrection()
         Mconv.init(size,size,size);Fconv_real.init(size,size,size/2+1);Fconv_imag.init(size,size,size/2+1);
 
         // new
-        double* realData = (double*)_mm_malloc(sizeof(double)*size*size*size,64);
-        MKL_Complex16* complexData = (MKL_Complex16*) _mm_malloc(sizeof(MKL_Complex16) * size*size*(size/2+1),64);
+        double* realData = (double*)aMalloc(sizeof(double)*size*size*size,64);
+        MKL_Complex16* complexData = (MKL_Complex16*) aMalloc(sizeof(MKL_Complex16) * size*size*(size/2+1),64);
         
         // if(size == 100) newtransformer.init(realData, (fftw_complex*)complexData, size, size, size, 72);
         // else newtransformer.reset_plan(realData, (fftw_complex*)complexData, size, size, size);
@@ -240,7 +240,7 @@ void FFTWTransformer::testCorrection()
         std::cout<<"memory : "<<size*size*size*8./1024./1024./1024.*2<<" GB."<<std::endl;
 
         Mconv.fini();Fconv_real.fini();Fconv_imag.fini();
-        _mm_free(realData);fftw_free(complexData);
+        aFree(realData);fftw_free(complexData);
     }
 
     double t2 = dtime();

@@ -34,7 +34,7 @@
 class FloatImages {
 public:
     // TBD : why this virtual deconstructor cannot work on my Mac
-    // virtual ~ListOfImages() = 0 {}
+    // virtual ~ListOfImages() {}
     virtual int nr_images() = 0;
     virtual int imageSide() = 0;		// images are assumed to be square
     virtual float* image_ptr(size_t i) = 0;
@@ -169,7 +169,7 @@ namespace Mrcs {
     public:
         MrcsImages(int _size, int _N) : size(_size), N(_N) {
             is_alloc = true;
-            image_data = (float*)_mm_malloc(sizeof(float)*N*size*size,64);
+            image_data = (float*)aMalloc(sizeof(float)*N*size*size,64);
             for (int i = 0; i < N*size*size; i++) image_data[i] = 0.;
         }
         MrcsImages(float* data, int _size, int _N) : size(_size), N(_N) {
@@ -178,10 +178,10 @@ namespace Mrcs {
         }
         MrcsImages(const double* data, int _size, int _N) : size(_size), N(_N) {
             is_alloc = true;
-            image_data = (float*)_mm_malloc(sizeof(float)*N*size*size,64);
+            image_data = (float*)aMalloc(sizeof(float)*N*size*size,64);
             for (int i = 0; i < N*size*size; i++) image_data[i] = float(data[i]);
         }
-        virtual ~MrcsImages() {if(is_alloc) _mm_free(image_data); image_data = nullptr;}
+        virtual ~MrcsImages() {if(is_alloc) aFree(image_data); image_data = nullptr;}
         virtual int nr_images() { return N; }
         virtual int imageSide() { return size; }
         virtual float* image_ptr(size_t i) { return image_data + size*size*i; }
@@ -200,10 +200,10 @@ namespace Mrcs {
     public:
         MrcsFImages(int _size, int _N) : size(_size), N(_N), Fsize(_size/2+1) {
             is_alloc = true;
-            image_data = (float*)_mm_malloc(sizeof(float)*N*size*size,64);
+            image_data = (float*)aMalloc(sizeof(float)*N*size*size,64);
             for (int i = 0; i < N*size*size; i++) image_data[i] = 0.;
-            image_data_real = (float*)_mm_malloc(sizeof(float)*N*size*Fsize,64);
-            image_data_imag = (float*)_mm_malloc(sizeof(float)*N*size*Fsize,64);
+            image_data_real = (float*)aMalloc(sizeof(float)*N*size*Fsize,64);
+            image_data_imag = (float*)aMalloc(sizeof(float)*N*size*Fsize,64);
             for (int i = 0; i < N*size*Fsize; i++) image_data_real[i] = image_data_imag[i] = 0.;
         }
         template<typename T>
@@ -211,7 +211,7 @@ namespace Mrcs {
             is_alloc = false;
             int size2 = size*size;
             int Fsize2 = size*Fsize;
-            image_data = (float*)_mm_malloc(sizeof(float)*N*size*size,64);
+            image_data = (float*)aMalloc(sizeof(float)*N*size*size,64);
             for (int n = 0; n < N; n++) {
                 //
                 for (int i = 0; i < size; i++) {
@@ -225,10 +225,10 @@ namespace Mrcs {
         }
         virtual ~MrcsFImages() {
             if(is_alloc) {
-                _mm_free(image_data_real);
-                _mm_free(image_data_imag);
+                aFree(image_data_real);
+                aFree(image_data_imag);
             }
-            _mm_free(image_data);
+            aFree(image_data);
             image_data_real = nullptr;
             image_data_imag = nullptr;
             image_data = nullptr;
@@ -250,7 +250,7 @@ namespace Mrcs {
     public:
         MrcVolume(int _size,double _anpix) : size(_size), anpix(_anpix) {
             is_alloc = true;
-            data = (float*)_mm_malloc(sizeof(float)*size*size*size,64);
+            data = (float*)aMalloc(sizeof(float)*size*size*size,64);
             for (int i = 0; i < size*size*size; i++) data[i] = 0.;
         }
         MrcVolume(float* _data, int _size, double _anpix) : size(_size), anpix(_anpix) {
@@ -259,10 +259,10 @@ namespace Mrcs {
         }
         MrcVolume(const double* _data, int _size, double _anpix) : size(_size), anpix(_anpix) {
             is_alloc = true;
-            data = (float*)_mm_malloc(sizeof(float)*size*size*size,64);
+            data = (float*)aMalloc(sizeof(float)*size*size*size,64);
             for (int i = 0; i < size*size*size; i++) data[i] = float(_data[i]);
         }
-        ~MrcVolume() {if(is_alloc) _mm_free(data); data = nullptr;}
+        ~MrcVolume() {if(is_alloc) aFree(data); data = nullptr;}
         virtual int volumeSide() { return size; }
         virtual float* ptr(){return data;}
         void write(std::string filename,MrcsHead& mrcHead){

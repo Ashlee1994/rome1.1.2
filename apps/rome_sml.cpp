@@ -38,7 +38,7 @@ void fineClassify(Option& option)
     double set_alpha                = option.getFloatOption("-alpha");
     bool set_update_beta            = option.getIntOption("-updatebeta");
     int set_sampling_dim            = option.getIntOption("-dimension");
-    if (set_sampling_dim != 1) {std::cerr<<"Wrong sampling dimension for GTM fine searching."<<std::endl;exit(0);}
+    if (set_sampling_dim != 1) {std::cerr<<"Wrong sampling dimension for GTM fine searching."<<std::endl;EXIT_ABNORMALLY;}
     // turn off the mic offload mode for fine searching
     double probThreshold            = 1.0;//option.getFloatOption("-weightedsum");
     
@@ -158,7 +158,7 @@ void ordinaryClassify(Option& option)
         double set_alpha                = option.getFloatOption("-alpha");
         bool set_update_beta            = option.getIntOption("-updatebeta");
         int set_sampling_dim            = option.getIntOption("-dimension");
-        if (set_sampling_dim > 3 || set_sampling_dim < 1) {std::cerr<<"Wrong sampling dimension."<<std::endl;exit(0);}
+        if (set_sampling_dim > 3 || set_sampling_dim < 1) {std::cerr<<"Wrong sampling dimension."<<std::endl;EXIT_ABNORMALLY;}
         
         double probThreshold            = option.getFloatOption("-weightedsum");
         
@@ -178,13 +178,13 @@ void ordinaryClassify(Option& option)
         switch (set_sampling_dim) {
             case 1:
                 K_info = split(option.getStrOption("-K"),',');
-                if (K_info.size() != 1) {std::cerr<<"Wrong for input -K"<<std::endl;exit(1);}
+                if (K_info.size() != 1) {std::cerr<<"Wrong for input -K"<<std::endl;EXIT_ABNORMALLY;}
                 X_infos[0]=1;X_infos[1]=K_info[0];X_infos[2]=K_info[0];
                 M=X_infos[2]*0.8;Mu_infos[0]=1.*(double)M/(M-1);Mu_infos[1]=X_infos[2]*(double)M/(M-1);Mu_infos[2]=M;
                 break;
             case 2:
                 K_info = split(option.getStrOption("-K"),',');
-                if (K_info.size() != 2) {std::cerr<<"Wrong for input -K"<<std::endl;exit(1);}
+                if (K_info.size() != 2) {std::cerr<<"Wrong for input -K"<<std::endl;EXIT_ABNORMALLY;}
                 X_infos[0]=1;X_infos[1]=K_info[0];X_infos[2]=K_info[0];
                 X_infos[3]=1;X_infos[4]=K_info[1];X_infos[5]=K_info[1];
                 M=X_infos[2]*0.8;Mu_infos[0]=1.*(double)M/(M-1);Mu_infos[1]=X_infos[2]*(double)M/(M-1);Mu_infos[2]=M;
@@ -192,7 +192,7 @@ void ordinaryClassify(Option& option)
                 break;
             case 3:
                 K_info = split(option.getStrOption("-K"),',');
-                if (K_info.size() != 3) {std::cerr<<"Wrong for input -K"<<std::endl;exit(1);}
+                if (K_info.size() != 3) {std::cerr<<"Wrong for input -K"<<std::endl;EXIT_ABNORMALLY;}
                 X_infos[0]=1;X_infos[1]=K_info[0];X_infos[2]=K_info[0];
                 X_infos[3]=1;X_infos[4]=K_info[1];X_infos[5]=K_info[1];
                 X_infos[6]=1;X_infos[7]=K_info[2];X_infos[8]=K_info[2];
@@ -243,7 +243,7 @@ int main(int argc,char *argv[])
     option.addOption("-o"                   ,"Output metadata"                                                                              );
     option.addOption("-K"                   ,"Number of classes needed to classify!!!!! please use Uppercase —K instead of lowercase -k !!!!!");
     option.addOption("-iter"                ,"Maximum number of iterations to perform"                                                      );
-    option.addOption("-angpix"              ,"Pixel size (in Angstroms)!!!!! please use -angpix instead of -pixel !!!!!"                    );
+    option.addOption("-angpix"              ,"Pixel size (in Angstroms)!!!!! please use -angpix instead of -pixel !!!!!"		            );
     // advanced option
     option.addOption("-dimension"           ,"Sampling grid dimension(Default 1)"                                               ,"1"        );
     option.addOption("-pca"                 ,"Using PCA to initialize,(Defalut is using Gauss-Circle template)"                 ,"0"        );
@@ -265,9 +265,8 @@ int main(int argc,char *argv[])
     
     if (argc < 3) {
         option.printHelp();
-        std::cout<<"example :"<<std::endl;
-        std::cout<<" ../bin/rome_sml -i class19.star -o class19_sml -K 10 -iter 30 -angpix 1.74 -ctf > sml_output.txt"<<std::endl;
-        exit(1);
+        std::cout<<"example : ./bin/rome_sml -i dataset/class19.star -o dataset/class19_gtm -K 10 -iter 30 -angpix 1.74 > dataset/gtm_output.txt"<<std::endl;
+        EXIT_ABNORMALLY;
     }
 
     option.readCommandLine(argc, argv);

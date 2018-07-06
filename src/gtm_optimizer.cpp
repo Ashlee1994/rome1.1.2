@@ -85,7 +85,7 @@ namespace GTMoptimizer {
     MIC_OFFLOAD_ATTRIBUTES int numXeonPhithreads;
     
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) double* PHI;
+        __attribute__((aligned(64))) double* PHI;
     
     MIC_OFFLOAD_ATTRIBUTES int K;
     MIC_OFFLOAD_ATTRIBUTES int M;
@@ -93,40 +93,40 @@ namespace GTMoptimizer {
     MIC_OFFLOAD_ATTRIBUTES int D;
 
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* TReal;
+        __attribute__((aligned(64))) float* TReal;
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* TImag;
+        __attribute__((aligned(64))) float* TImag;
 
     // contrast transfer function
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* CTFvalue;   //DxN
+        __attribute__((aligned(64))) float* CTFvalue;   //DxN
 
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* WReal;
+        __attribute__((aligned(64))) float* WReal;
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* WImag;
+        __attribute__((aligned(64))) float* WImag;
 
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) double* YReal;
+        __attribute__((aligned(64))) double* YReal;
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) double* YImag;
+        __attribute__((aligned(64))) double* YImag;
 
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) double* R;
+        __attribute__((aligned(64))) double* R;
 
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* Alpha;
+        __attribute__((aligned(64))) float* Alpha;
 
     MIC_OFFLOAD_ATTRIBUTES double AverageBeta;
     MIC_OFFLOAD_ATTRIBUTES double AverageAlpha;
 
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float *avTReal;
+        __attribute__((aligned(64))) float *avTReal;
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float *avTImag;
+        __attribute__((aligned(64))) float *avTImag;
     
     MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) int *ipiv;
+        __attribute__((aligned(64))) int *ipiv;
     
     FineSearch fineSearch;
     
@@ -226,7 +226,7 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
     
     M = Mnl + 1;
     
-    PHI = (double*)_mm_malloc(sizeof(double)*K*M,64);
+    PHI = (double*)aMalloc(sizeof(double)*K*M,64);
     
     switch (set_sampling_dim) {
         case 1:
@@ -294,7 +294,7 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
     
     
     // initialize CTFValue
-    CTFvalue = (float*)_mm_malloc(sizeof(float)*N*d_interval,64);
+    CTFvalue = (float*)aMalloc(sizeof(float)*N*d_interval,64);
     // Have the data been CTF phase-flipped?
     // bool ctf_phase_flipped = false;
     // Only perform CTF phase-flipping? (default is full amplitude-correction)
@@ -307,7 +307,7 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
     for(int n = 0;n < N;n++){
         if (do_ctf_correction) {
             CTF ctf;
-            double *CTFbuffer = (double*)_mm_malloc(sizeof(double)*D,64);
+            double *CTFbuffer = (double*)aMalloc(sizeof(double)*D,64);
             
             ctf.setValues(metadata[n].CTF_DEFOCUS_U,metadata[n].CTF_DEFOCUS_V,metadata[n].CTF_DEFOCUS_ANGLE,metadata[n].CTF_VOLTAGE,\
                           metadata[n].CTF_CS,metadata[n].CTF_Q0,metadata[n].CTF_BFAC);
@@ -321,7 +321,7 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
             for(int d = 0;d < d_interval;d++)
                 CTFvalue[INDEXSZ(INDEXSZ(d)*INDEXSZ(N))+INDEXSZ(n)] = CTFbuffer[d+d_start];
             
-            _mm_free(CTFbuffer);
+            aFree(CTFbuffer);
         }
         else
         {
@@ -333,7 +333,7 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
     
     
     // FourierTransformerDFTI fftford_worker(picdim,picdim);
-    // MKL_Complex8 *fft_out = (MKL_Complex8*)_mm_malloc(picdim*(picdim/2+1)*sizeof(MKL_Complex8),64);
+    // MKL_Complex8 *fft_out = (MKL_Complex8*)aMalloc(picdim*(picdim/2+1)*sizeof(MKL_Complex8),64);
     FFTWFTransformer fftford_worker(picdim,picdim);
     SOAComplexArray<float> fft_out(picdim*(picdim/2+1));
     // initialze TReal TImag
@@ -343,13 +343,13 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
         NODE0ONLY std::cout<<"...double precision for Images data,do PCA in one node..."<<std::endl;
         NODE0ONLY std::cout<<"...image data dimension is "<<N<<"x"<<D0<<",size "<<(double(N)*double(D0)*8./1024./1024./1024.)<<" GB..."<<std::endl;
         NODE0ONLY std::cout<<"...need to do for PCA,1)float datatype precision,2)multi-nodes support..."<<std::endl;
-        NODE0ONLY T = (double*)_mm_malloc(sizeof(double)*N*D0,64);
+        NODE0ONLY T = (double*)aMalloc(sizeof(double)*N*D0,64);
     }
-    TReal = (float*)_mm_malloc(sizeof(float)*d_interval*N,64);
-    TImag = (float*)_mm_malloc(sizeof(float)*d_interval*N,64);
+    TReal = (float*)aMalloc(sizeof(float)*d_interval*N,64);
+    TImag = (float*)aMalloc(sizeof(float)*d_interval*N,64);
     
-    float *buffer = (float*)_mm_malloc(sizeof(float)*picdim*picdim,64);
-    float *buffer2 = (float*)_mm_malloc(sizeof(float)*picdim*picdim,64);
+    float *buffer = (float*)aMalloc(sizeof(float)*picdim*picdim,64);
+    float *buffer2 = (float*)aMalloc(sizeof(float)*picdim*picdim,64);
     // fft data
     int particle_diameter = int(pixel_size*picdim);
     int width_mask_edge = 5;
@@ -426,24 +426,24 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
     
     fclose(mrcsFile);
     
-    _mm_free(buffer);
-    _mm_free(buffer2);
+    aFree(buffer);
+    aFree(buffer2);
     
     
     //  initialize W  -------------------------------------
-    WReal = (float*)_mm_malloc(sizeof(float)*d_interval*M,64);   //should be K*D*M
-    WImag = (float*)_mm_malloc(sizeof(float)*d_interval*M,64);  //////////////////
+    WReal = (float*)aMalloc(sizeof(float)*d_interval*M,64);   //should be K*D*M
+    WImag = (float*)aMalloc(sizeof(float)*d_interval*M,64);  //////////////////
     
-    // ipiv = (int*)mkl_malloc(sizeof(int)*M,64);
+    // ipiv = (int*)aMalloc(sizeof(int)*M,64);
     
-    float *W = (float*)_mm_malloc(sizeof(float)*M*D0,64);
-    float *refData = (float*)_mm_malloc(sizeof(float)*K*D0,64);
+    float *W = (float*)aMalloc(sizeof(float)*M*D0,64);
+    float *refData = (float*)aMalloc(sizeof(float)*K*D0,64);
     
     // initialize W & belta by PCA if necessary
     // (double *_T,int _N,int _D,double *_X,int _K,int _L,double *_PHI,double *_W,int _M,double* _Belta);
     double beltaTemp;
     double* W_double;
-    if (init_by_pca) W_double = (double*)_mm_malloc(sizeof(double)*M*D0,64);
+    if (init_by_pca) W_double = (double*)aMalloc(sizeof(double)*M*D0,64);
     Pca pca_initializer(T,N,D0,X,K,L,PHI,W_double,M,&beltaTemp);
     
     if (ref_fn != "NULL")
@@ -483,12 +483,12 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
         int select_class = 17;
         long offset = (256+(select_class-1)*picdim*picdim)*sizeof(float);
         fseek(refFile,offset,SEEK_SET);
-        float* refData_tmp = (float*)_mm_malloc(sizeof(float)*picdim*picdim,64);
+        float* refData_tmp = (float*)aMalloc(sizeof(float)*picdim*picdim,64);
         fread((char*)refData_tmp,picdim*picdim*sizeof(float),1,refFile);
         for (int k = 0; k < K; k++) {
             memcpy(refData+k*picdim*picdim, refData_tmp, picdim*picdim*sizeof(float));
         }
-        _mm_free(refData_tmp);
+        aFree(refData_tmp);
         
 #endif
         fclose(refFile);
@@ -513,8 +513,8 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
         // initialize average beta
         AverageBeta = beltaTemp;
         if (node == 1) std::cout<<"...AverageBeta in node 1 "<<AverageBeta<<" ..."<<std::endl;
-        NODE0ONLY _mm_free(T);
-        NODE0ONLY _mm_free(W_double);
+        NODE0ONLY aFree(T);
+        NODE0ONLY aFree(W_double);
         
     }
     else{
@@ -538,8 +538,8 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
     
     
     
-    _mm_free(refData);
-    _mm_free(W);
+    aFree(refData);
+    aFree(W);
     
     double node0memGB = prepare();
     
@@ -554,21 +554,21 @@ void GTMoptimizer::setupGTMoptimizer(double X_infos[],double Mu_infos[],int set_
 void GTMoptimizer::destroyGTMoptimizer(){
     
     
-    _mm_free(R);
+    aFree(R);
     
-    _mm_free(YReal);
-    _mm_free(YImag);
+    aFree(YReal);
+    aFree(YImag);
     
-    _mm_free(TReal);
-    _mm_free(TImag);
-    _mm_free(WReal);
-    _mm_free(WImag);
+    aFree(TReal);
+    aFree(TImag);
+    aFree(WReal);
+    aFree(WImag);
     
-    _mm_free(CTFvalue);
+    aFree(CTFvalue);
     
-    mkl_free(ipiv);
+    aFree(ipiv);
     
-    _mm_free(PHI);
+    aFree(PHI);
     
 }
     
@@ -577,13 +577,13 @@ double prepare(){
     NODE0ONLY dumpT();
     
     // mkl_solve gets called with size "M"
-    ipiv = (int*)mkl_malloc(sizeof(int)*M,MEMALIGNMENT);
+    ipiv = (int*)aMalloc(sizeof(int)*M,64);
     
-	// Delta = (double*)_mm_malloc(sizeof(double)*K*N,64);
-	R = (double*)_mm_malloc(sizeof(double)*K*N,64);
+	// Delta = (double*)aMalloc(sizeof(double)*K*N,64);
+	R = (double*)aMalloc(sizeof(double)*K*N,64);
 
-	YReal = (double*)_mm_malloc(sizeof(double)*d_interval*K,64);
-	YImag = (double*)_mm_malloc(sizeof(double)*d_interval*K,64);
+	YReal = (double*)aMalloc(sizeof(double)*d_interval*K,64);
+	YImag = (double*)aMalloc(sizeof(double)*d_interval*K,64);
 
     NODE0ONLY{
 		std::cout<<"space needed for each node: "<<calSpace()<<" GB"<<std::endl;
@@ -746,11 +746,11 @@ void iterateUpdateW()
 #endif
         {
             int numthreads = maxthreads;
-            __attribute__((aligned(MEMALIGNMENT)))  double *AA;
-            __attribute__((aligned(MEMALIGNMENT)))  double *bRealArray;
-            __attribute__((aligned(MEMALIGNMENT)))  double *bImagArray;
-            __attribute__((aligned(MEMALIGNMENT)))  double *A;
-            __attribute__((aligned(MEMALIGNMENT)))  double *b;
+            __attribute__((aligned(64)))  double *AA;
+            __attribute__((aligned(64)))  double *bRealArray;
+            __attribute__((aligned(64)))  double *bImagArray;
+            __attribute__((aligned(64)))  double *A;
+            __attribute__((aligned(64)))  double *b;
 
             if (mic_index > 0)
             {
@@ -765,12 +765,12 @@ void iterateUpdateW()
             const int totalsizeA = numthreads*sizeof(double)*(M*M + 4096);
             const int totalsizeb = numthreads*sizeof(double)*(M   + 4096);
 
-            AA = (double*)_mm_malloc(totalsizeA,MEMALIGNMENT);
-            bRealArray = (double*)_mm_malloc(totalsizeb,MEMALIGNMENT);
-            bImagArray = (double*)_mm_malloc(totalsizeb,MEMALIGNMENT);
+            AA = (double*)aMalloc(totalsizeA,64);
+            bRealArray = (double*)aMalloc(totalsizeb,64);
+            bImagArray = (double*)aMalloc(totalsizeb,64);
 
-            A = (double*)_mm_malloc(sizeof(double)*M*M,MEMALIGNMENT);   //for icpc case
-            b = (double*)_mm_malloc(sizeof(double)*2*M,MEMALIGNMENT);
+            A = (double*)aMalloc(sizeof(double)*M*M,64);   //for icpc case
+            b = (double*)aMalloc(sizeof(double)*2*M,64);
 
             // Zero arrays in a way that does proper NUMA first-touch
             // We do not use dynamic scheduling to ensure that the
@@ -815,11 +815,11 @@ void iterateUpdateW()
                 }
             }
 
-            _mm_free(A);
-            _mm_free(b);
-            _mm_free(AA);
-            _mm_free(bRealArray);
-            _mm_free(bImagArray);
+            aFree(A);
+            aFree(b);
+            aFree(AA);
+            aFree(bRealArray);
+            aFree(bImagArray);
         } // pragma offload
 
         fstop = dtime();
@@ -862,21 +862,21 @@ void getWd(const int &d,double *A,double *b, int maxthreads,
 {
     const int MM = M*M;
     
-    __assume_aligned(WReal,MEMALIGNMENT);
-    __assume_aligned(WImag,MEMALIGNMENT);
-    __assume_aligned(CTFvalue,MEMALIGNMENT);
-    __assume_aligned(TReal,MEMALIGNMENT);
-    __assume_aligned(TImag,MEMALIGNMENT);
-    __assume_aligned(PHI,MEMALIGNMENT);
-    __assume_aligned(R,MEMALIGNMENT);    
-    __assume_aligned(AA,MEMALIGNMENT);
-    __assume_aligned(A,MEMALIGNMENT);
-    __assume_aligned(b,MEMALIGNMENT);
-    __assume_aligned(bRealArray,MEMALIGNMENT);
-    __assume_aligned(bImagArray,MEMALIGNMENT);  
+    __assume_aligned(WReal,64);
+    __assume_aligned(WImag,64);
+    __assume_aligned(CTFvalue,64);
+    __assume_aligned(TReal,64);
+    __assume_aligned(TImag,64);
+    __assume_aligned(PHI,64);
+    __assume_aligned(R,64);    
+    __assume_aligned(AA,64);
+    __assume_aligned(A,64);
+    __assume_aligned(b,64);
+    __assume_aligned(bRealArray,64);
+    __assume_aligned(bImagArray,64);  
   
     const size_t usedCapacity = size_t(maxthreads);
-    bool* used = new bool[usedCapacity];
+    bool* used = vNew(bool,usedCapacity);
     for (int i = 0; i < usedCapacity; i++) used[i] = false;
 
 	const int Aoffset = (MM + 4096);	// See const int totalsizeA 
@@ -1468,7 +1468,7 @@ double update_P_Delta(){
     // NOTE - We do this the on host to avoid extra copies of data to the Phi
     if (numMIC > 0)
     {
-      double *tempRK = (double*)_mm_malloc(sizeof(double)*N,MEMALIGNMENT);
+      double *tempRK = (double*)aMalloc(sizeof(double)*N,64);
       for(int mic_index = 1; mic_index < NUM_LOCAL_COMPUTE_ENGINES; mic_index++)
       {
           size_t chunkStart, chunkSize;
@@ -1483,7 +1483,7 @@ double update_P_Delta(){
               chunkStart = k*N;
 #ifdef DONT_USE_OFFLOAD
 			  std::cerr << "Not using offload" << std::endl;
-			  exit(1);
+			  EXIT_ABNORMALLY;
 #else
               #pragma offload_transfer target(mic:(mic_index-1)) \
                   out(R[chunkStart:chunkSize] : into(tempRK[0:chunkSize]) REUSE)
@@ -1497,7 +1497,7 @@ double update_P_Delta(){
           NODE0ONLY std::cout<<"Update_P_Delta R gather "<<mic_index<<": "<<fstop-fstart<<" sec"<<std::endl<<std::flush; 
 
       } // for all cards
-      _mm_free(tempRK);
+      aFree(tempRK);
     }
 
     // Do the final set up of this node's R
@@ -1665,13 +1665,13 @@ void run(double preci,double probThreshold,double alpha,bool update_beta)
     
 #ifdef USEMPI
 	// reduce R to node 0
-	double *tempRK = (double*)_mm_malloc(sizeof(double)*N,MEMALIGNMENT);
+	double *tempRK = (double*)aMalloc(sizeof(double)*N,64);
 	for(int k = 0;k < K;k++){
         MPI::COMM_WORLD.Reduce(R+INDEXSZ(INDEXSZ(k)*INDEXSZ(N)),tempRK,N,MPI::DOUBLE,MPI::SUM,0);
         MPI::COMM_WORLD.Barrier();//???
         NODE0ONLY memcpy(R+INDEXSZ(INDEXSZ(k)*INDEXSZ(N)),tempRK,sizeof(double)*N); /****node 0****/
 	}
-	_mm_free(tempRK);
+	aFree(tempRK);
 #endif
     NODE0ONLY fstop = dtime();
     NODE0ONLY std::cout<<"Initial R reduction: "<<fstop-fstart<<" sec"<<std::endl<<std::flush;
@@ -1874,12 +1874,12 @@ void run(double preci,double probThreshold,double alpha,bool update_beta)
         
 #ifdef USEMPI
 		//reduce R to node 0
-		double *tempRK = (double*)_mm_malloc(sizeof(double)*N,64);
+		double *tempRK = (double*)aMalloc(sizeof(double)*N,64);
 		for(int k = 0;k < K;k++){
 			MPI::COMM_WORLD.Reduce(R+INDEXSZ(INDEXSZ(k)*INDEXSZ(N)),tempRK,N,MPI::DOUBLE,MPI::SUM,0);
 			NODE0ONLY memcpy(R+INDEXSZ(INDEXSZ(k)*INDEXSZ(N)),tempRK,sizeof(double)*N); /****node 0****/
 		}
-		_mm_free(tempRK);
+		aFree(tempRK);
 #endif
         NODE0ONLY fstop = dtime();
         NODE0ONLY std::cout<<"R reduction: "<<fstop-fstart<<" sec"<<std::endl<<std::flush;
@@ -2039,15 +2039,15 @@ void writeClassAverageCTF(std::string filename_mrcs,std::string fn_metadata,doub
 	}
  
 	// ---------  get the average picture   --------------
-	avTReal = (float*)_mm_malloc(sizeof(float)*d_interval*K,MEMALIGNMENT);
-	avTImag = (float*)_mm_malloc(sizeof(float)*d_interval*K,MEMALIGNMENT);
+	avTReal = (float*)aMalloc(sizeof(float)*d_interval*K,64);
+	avTImag = (float*)aMalloc(sizeof(float)*d_interval*K,64);
 
 	float *data;
     
     FFTWFTransformer fftback_worker(mrcsHead[1],mrcsHead[0]);
     
     NODE0ONLY {
-        data = (float*)_mm_malloc(sizeof(float)*K*mrcsHead[1]*mrcsHead[0],MEMALIGNMENT);
+        data = (float*)aMalloc(sizeof(float)*K*mrcsHead[1]*mrcsHead[0],64);
     }
 	
     ERROR_CHECK(probThreshold < 0, "weightedsum should be in 0~1.");
@@ -2081,8 +2081,8 @@ void writeClassAverageCTF(std::string filename_mrcs,std::string fn_metadata,doub
         // Since each node will have only filled in its slide of RFFTbuffer and
         // IFFTbuffer, this is a whole lot of adding elements containing zero to
         // a single element containing the data from a given node
-        MPI::COMM_WORLD.Reduce(RFFTbuffer,mergedRFFTbuffer,D,MPI_FLOAT,MPI_SUM,0);
-        MPI::COMM_WORLD.Reduce(IFFTbuffer,mergedIFFTbuffer,D,MPI_FLOAT,MPI_SUM,0);
+        MPI::COMM_WORLD.Reduce(RFFTbuffer,mergedRFFTbuffer,D,MPI::FLOAT,MPI::SUM,0);
+        MPI::COMM_WORLD.Reduce(IFFTbuffer,mergedIFFTbuffer,D,MPI::FLOAT,MPI::SUM,0);
         
         MPI::COMM_WORLD.Barrier();
 #else
@@ -2118,9 +2118,9 @@ void writeClassAverageCTF(std::string filename_mrcs,std::string fn_metadata,doub
         }
 	}
 
-	NODE0ONLY _mm_free(data);
-	_mm_free(avTReal);
-	_mm_free(avTImag);
+	NODE0ONLY aFree(data);
+	aFree(avTReal);
+	aFree(avTImag);
 
 #ifdef USEMPI
 	MPI::COMM_WORLD.Barrier();
@@ -2192,8 +2192,8 @@ void writeClassAverageCTFsub_maxPro(){
             avTImag[INDEXSZ(INDEXSZ(d) * INDEXSZ(K)) + INDEXSZ(k)] = 0;
     
     // double temp;
-    double *max_R = (double*)_mm_malloc(sizeof(double)*N,64);
-    int *max_R_k = (int*)_mm_malloc(sizeof(int)*N,64);
+    double *max_R = (double*)aMalloc(sizeof(double)*N,64);
+    int *max_R_k = (int*)aMalloc(sizeof(int)*N,64);
     
 #pragma omp parallel for
     for (int n = 0; n < N; n++) {
@@ -2240,8 +2240,8 @@ void writeClassAverageCTFsub_maxPro(){
                 avTImag[INDEXSZ(INDEXSZ(d) * INDEXSZ(K)) + INDEXSZ(k)]/temp;
             
         }
-    _mm_free(max_R);
-    _mm_free(max_R_k);
+    aFree(max_R);
+    aFree(max_R_k);
 }
 
 /// ---------------------------------------------------------------------

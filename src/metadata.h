@@ -21,19 +21,6 @@
 #ifndef METADATA_H_
 #define METADATA_H_
 
-#include <map>
-#include <string>
-#include <algorithm>
-#include <tuple>
-#include <cstring>
-#include <iostream>
-#include <iomanip>
-#include <vector>
-#include <fstream>
-#include <sstream> /*istringstream*/
-#include <cmath>
-#include <cassert>
-
 #include "./util.h"
 #include "./memory.h"
 #include "./error.h"
@@ -82,6 +69,8 @@ inline std::ostream& operator<<(std::ostream& os, MetaName const & rhs) {os<<num
     /* only the group_name for reading */                                                     \
     ELTINT(int         , GROUP_NO			, 1         ,   GroupNumber                 ) SEP \
     ELTSTR(std::string , GROUP_NAME			, ""        ,   GroupName                   ) SEP \
+	/* Random subset this particle belongs to(only used in 'autorefine') */					  \
+	ELTINT(int		   , SUBSET				, 0			,	RandomSubset				) SEP \
     ELTDOU(FDOUBLE     , ROT				, 0.0       ,   AngleRot                    ) SEP \
     ELTDOU(FDOUBLE     , TILT				, 0.0       ,   AngleTilt                   ) SEP \
     ELTDOU(FDOUBLE     , PSI				, 0.0       ,   AnglePsi                    ) SEP \
@@ -251,8 +240,8 @@ inline std::ostream& operator<<(std::ostream& os, MetaDataElem const & rhs) { rh
 class MetaDataTable : public NoCopy {
 public:
     MetaDataTable():N(0),latestLabelStatus(nullptr) {}
-    ~MetaDataTable() { free(); }
-    void clear()     { free(); }
+    ~MetaDataTable() { freeMetaData(); }
+    void clear()     { freeMetaData(); }
     
     // initialize the metadata table
     void readFromMetaDataElements(std::vector<MetaDataElem>& _metaDataElems);
@@ -265,17 +254,34 @@ public:
     void printTable(std::ostream& os = std::cout) const;
     
     // get the metadata elements size
-    int numberOfParticles() 	const 	{return N;}
+    int numberOfParticles(int random_subset = -1) const {
+        if (random_subset==1) return nr_ori_particles_subset1;
+        else if (random_subset==2) return nr_ori_particles_subset2;
+        else return N;
+    }
+    void selectHalfMetadata(int random_subset) {
+        if (random_subset==1) {
+            subset_start = 0;subset_end = nr_ori_particles_subset1;
+        }
+        else if (random_subset==2) {
+            subset_start = nr_ori_particles_subset1;subset_end = nr_ori_particles_subset1+nr_ori_particles_subset2;
+        }
+        else {
+            subset_start = 0;subset_end = N;
+        }
+    }
     int numberOfGroups()		const 	{return nr_groups;}
     int numberOfMicrographs()	const	{return nr_micrograph;}
     //
     void append(std::vector<MetaDataElem>& _metadataElems);
     
-    inline MetaDataElem       & operator[](int i)       {return metaDataElems[metadata_order[i]];}
-    inline MetaDataElem const & operator[](int i) const {return metaDataElems[metadata_order[i]];}
-    
+    inline MetaDataElem       & operator[](int i)       {assert(i>-1);assert(i<(subset_end-subset_start)); return metaDataElems[metadata_order[i+subset_start]];}
+    inline MetaDataElem const & operator[](int i) const {assert(i>-1);assert(i<(subset_end-subset_start)); return metaDataElems[metadata_order[i+subset_start]];}
+    inline MetaDataElem 	  & accessAll(int i)		{assert(i>-1);assert(i<N); return metaDataElems[metadata_order[i]];}
+    inline MetaDataElem const & accessAll(int i) const  {assert(i>-1);assert(i<N); return metaDataElems[metadata_order[i]];}
     // randomly shuffle the metadata elements
-    void shuffle(int random_seed = -1);
+    // and split metadata to two random subset if no randomsubset read from *.star(only used in autorefine)
+    void shuffle(int random_seed = -1,bool do_split_random_halves = false);
     
     // some statistics function
     void statClassImageNumber(std::vector<int> &imageNumberPerClass,bool showHist = false);
@@ -287,7 +293,7 @@ public:
     void unitTest(std::string fn);
     
 private:
-    void free();
+    void freeMetaData();
 
 	// all
 	class LabelStatus;
@@ -300,8 +306,12 @@ private:
 
     // metadata element number
     int N;
-    int nr_groups		= 1;
-    int nr_micrograph	= 1;
+    int nr_groups		= 0;
+    int nr_micrograph	= 0;
+    // bool do_split_random_halves = false; // split data to two random subset(in autorefine)
+    int nr_ori_particles_subset1 = 0;
+    int nr_ori_particles_subset2 = 0;
+    int subset_start,subset_end;
 	//
     std::vector<int> metadata_order;
 
@@ -348,14 +358,14 @@ public:
         os << tableName <<std::endl<<std::endl<<"loop_"<<std::endl;
 		int ScaleCorrectionIndex = 0; // remove rlnScaleCorrection
         for (int i = 0; i < MetaDataElemsName.size(); i++) {
-			if (MetaDataElemsName[i].compare("ScaleCorrection") == 0) { // remove rlnScaleCorrection
+			if (MetaDataElemsName[i].compare("ScaleCorrection") == 0 ) { // remove rlnScaleCorrection
 				ScaleCorrectionIndex = i;
 				continue;
 			}
 			else if (i > ScaleCorrectionIndex)
 				os << "_rln" << MetaDataElemsName[i] << " #" << std::to_string((long long)i) << std::endl;
-			else
-				os << "_rln" << MetaDataElemsName[i] << " #" << std::to_string((long long)i + 1) << std::endl;
+            else
+				os << "_rln"<<MetaDataElemsName[i]<<" #"<<std::to_string((long long)i+1)<<std::endl;
         }
         for (int metadataIndex = 0; metadataIndex < MetaDataElemsNumber; metadataIndex++) {
             for (int i = 0; i < MetaDataElems.size(); i++) {
@@ -425,8 +435,11 @@ public:
                 switch (MetaDataElemsType[i]) {
                     case ElemTypeChar:{
                         std::string lineTmp;lineStream >> lineTmp;
-                        ((std::string**)MetaDataElems[i])[metadataIndex] = new std::string(lineTmp);
-                    }	break;
+                        ((std::string**)MetaDataElems[i])[metadataIndex] = 
+#include "./util_heap_undefs.h"
+							new std::string(lineTmp);
+#include "./util_heap_defs.h"
+					}	break;
                     case ElemTypeInt:
                         lineStream >> ((int*)MetaDataElems[i])[metadataIndex];
                     	break;
@@ -438,7 +451,7 @@ public:
                 }
             }
         }
-        if (!metadata_num_fit) {MASTERNODE std::cout<<"_rln"<<MetaDataElemsName[0]<<" has less elements to read!!!!!"<<std::endl;}
+        //if (!metadata_num_fit) {MASTERNODE std::cout<<"_rln"<<MetaDataElemsName[0]<<" has less elements to read!!!!!"<<std::endl;}
         return metadata_num_fit;
     }
     bool contain(std::istream& is,std::string head)

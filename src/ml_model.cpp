@@ -18,21 +18,31 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "ml_model.h"
 
-void MLModel::initialize(int _ori_size,int _nr_classes,int _nr_groups,int _nr_directions)
+void MLModel::initialize(int _ori_size,int _nr_classes,int _nr_groups,int _nr_directions,double sigma2_angle)
 {
     //
     ori_size = _ori_size;ori_Fsize = ori_size/2+1;
     nr_classes = _nr_classes;
     nr_groups = _nr_groups;
     nr_directions = _nr_directions;
+    if (sigma2_angle != 0) {
+        orientational_prior_mode = PRIOR_ROTTILT_PSI;
+        sigma2_rot = sigma2_tilt = sigma2_psi = sigma2_angle * sigma2_angle;
+    }
     //
     tau2_class			.init(nr_classes, ori_Fsize);
     sigma2_noise		.init(nr_groups,  ori_Fsize);
     sigma2_class		.init(nr_classes, ori_Fsize);	sigma2_class.fill(0.);
     data_vs_prior_class	.init(nr_classes, ori_Fsize);
     fsc_halves_class	.init(nr_classes, ori_Fsize);	fsc_halves_class.fill(0.);
+    
+    orientability_contrib.init(nr_classes, ori_Fsize);
+    acc_rot				.init(nr_classes);
+    acc_trans			.init(nr_classes);
     
     scale_correction	.init(nr_groups);				scale_correction.fill(1.);
     
@@ -94,6 +104,10 @@ void MLModel::resetZero()
     wsum_prior_offsetx_class	.fill(0.);
     wsum_prior_offsety_class	.fill(0.);
     wsum_pdf_direction			.fill(0.);
+    
+    orientability_contrib		.fill(0.);
+    acc_rot						.fill(0.);
+    acc_trans					.fill(0.);
 }
 
 //
@@ -209,8 +223,20 @@ void MLModel::initialiseDataVersusPrior(MAPModel& mapModel,double tau2_fudge_fac
 #endif
 }
 
+void MLModel::initialisePdfDirection(int newsize)
+{
+    // If the pdf_direction were already filled (size!=0), and newsize=oldsize then leave them as they were
+    assert(nr_directions!=newsize);
+    // If they were still empty, or if the size changes, then initialise them with an even distribution
+    nr_directions = newsize;
+    pdf_direction		.fini();
+    pdf_direction		.init(nr_classes, nr_directions);pdf_direction.fill(1./((double)nr_classes*nr_directions));
+    wsum_pdf_direction	.fini();
+    wsum_pdf_direction	.init(nr_classes, nr_directions);wsum_pdf_direction.fill(0.);
+}
+
 //
-void MLModel::writeOutModel(std::string fn_model,const MAPModel& mapModel,const MetaDataTable& metadata)
+void MLModel::writeOutModel(std::string fn_model,const MAPModel& mapModel,const MetaDataTable& metadata,int random_subset)
 {
     std::ofstream modelFile;
     modelFile.open((fn_model+".star").c_str(), std::ios::out);
@@ -263,8 +289,11 @@ void MLModel::writeOutModel(std::string fn_model,const MAPModel& mapModel,const 
         std::vector<double> AccuracyRotations(nr_classes);
         std::vector<double> AccuracyTranslations(nr_classes);
         for (int iclass = 0; iclass < nr_classes; iclass++) {
-            ReferenceImage[iclass] = new std::string(fn_model.substr(0,fn_model.find("_model"))+"_class" + num2str(iclass+1) + ".mrc");
-            AccuracyRotations[iclass] = 999.;
+            ReferenceImage[iclass] = 
+#include "./util_heap_undefs.h"
+				born(new std::string(fn_model.substr(0,fn_model.find("_model"))+"_class" + num2str(iclass+1) + ".mrc"));
+#include "./util_heap_defs.h"
+			AccuracyRotations[iclass] = 999.;
             AccuracyTranslations[iclass] = 999.;
         }
         data_model_classes.appendElem({ReferenceImage.data(),pdf_class.wptrAll(),AccuracyRotations.data(),AccuracyTranslations.data()}, nr_classes);
@@ -295,11 +324,21 @@ void MLModel::writeOutModel(std::string fn_model,const MAPModel& mapModel,const 
             GroupNumber[i] = i+1;
         std::vector<std::string*> GroupName(nr_groups);
         std::vector<int> GroupNrParticles(nr_groups,0);
-        for (int i = 0; i < metadata.numberOfParticles(); i++){
+        // write all group_name and group_number
+        int nr_particles_all = metadata.numberOfParticles(-1);
+        for (int i = 0; i < nr_particles_all; i++){
+            int group_no = metadata.accessAll(i).GROUP_NO-1;
+            GroupName[group_no] =
+#include "./util_heap_undefs.h"
+            born(new std::string(metadata.accessAll(i).GROUP_NAME));
+#include "./util_heap_defs.h"
+        }
+        // only write this half particles number
+        int nr_particles_half = metadata.numberOfParticles(random_subset);
+        for (int i = 0; i < nr_particles_half; i++){
             int group_no = metadata[i].GROUP_NO-1;
             GroupNrParticles[group_no]++;
-            GroupName[group_no] = new std::string(metadata[i].GROUP_NAME);
-        }
+		}
         data_model_groups.appendElem({GroupNumber.data(),GroupName.data(),GroupNrParticles.data(),scale_correction.wptrAll()}, nr_groups);
         data_model_groups.print(modelFile);
     }
@@ -332,7 +371,7 @@ void MLModel::writeOutBild(std::string fn_class, MAPModel& mapModel, HealpixSamp
     }
 }
 
-void MLModel::readFromModel(std::string fn_model,MAPModel& mapModel)
+void MLModel::readFromModel(std::string fn_model,MAPModel& mapModel,bool debug_flag /*= false*/)
 {
     ifstreamCheckingExistence modelFile(fn_model.c_str());
     {
@@ -341,7 +380,7 @@ void MLModel::readFromModel(std::string fn_model,MAPModel& mapModel)
         while (true) {
             if (startingRead) {
                 double doubleTmp;
-#define CINMETADATA(V) modelFile >> line;modelFile >> doubleTmp;MASTERNODE std::cout<<std::setw(30)<<line<<" "<<doubleTmp<<std::endl;
+#define CINMETADATA(V) modelFile >> line;modelFile >> doubleTmp;if(debug_flag) {MASTERNODE std::cout<<std::setw(30)<<line<<" "<<doubleTmp<<std::endl;}
                 //
                 CINMETADATA("ReferenceDimensionality"	)
                 CINMETADATA("DataDimensionality"		)
@@ -376,7 +415,7 @@ void MLModel::readFromModel(std::string fn_model,MAPModel& mapModel)
             }
             else{
                 getline(modelFile,line);
-                MASTERNODE std::cout<<line<<std::endl;
+                if(debug_flag) MASTERNODE std::cout<<line<<std::endl;
                 if ((line.find("data_model_general") !=std::string::npos) ){
                     startingRead = true;
                     getline(modelFile,line);assert(line=="");// escape a empty line
@@ -475,7 +514,8 @@ void MLModel::readFromModel(std::string fn_model,MAPModel& mapModel)
         // use increase or decrease the heal_pix_order,reset the pdf_direction
         // directions_have_changed
         if (!metadata_fit) {
-            MASTERNODE std::cout<<"reset pdf_direction because of the different healpix order.."<<std::endl;
+            if(iclass==0) MASTERNODE std::cout<<"##### reset pdf_direction because increase the healpix order!"<<std::endl;
+            if(debug_flag) MASTERNODE std::cout<<"????? why not reset pdf_direction.... TODO..."<<std::endl;
             for (int idir = 0; idir < nr_directions; idir++)
                 pdf_direction[iclass].wptrAll()[idir] = 1./(nr_classes * nr_directions);
         }
@@ -544,55 +584,55 @@ void MLModel::printSpaceInfo(std::ostream &os)
 }
 
 // TODO
-void MLModel::reduceData()
+void MLModel::reduceData(const MPI::Intracomm& currentWorld)
 {
 #ifdef USEMPI
     int local_temp_size = std::max(std::max(nr_groups,ori_Fsize), std::max(nr_classes,nr_directions));
-    FDOUBLE* local_temp = (FDOUBLE*)_mm_malloc(sizeof(FDOUBLE)*local_temp_size,64);
+    FDOUBLE* local_temp = (FDOUBLE*)aMalloc(sizeof(FDOUBLE)*local_temp_size,64);
     
     for (int igroup = 0; igroup < nr_groups; igroup++)
     {
         //
         memcpy(local_temp, wsum_sigma2_noise[igroup].rptrAll(), sizeof(FDOUBLE)*ori_Fsize);
-        MPI::COMM_WORLD.Allreduce(local_temp,wsum_sigma2_noise[igroup].wptrAll(),ori_Fsize,MPI_FDOUBLE,MPI::SUM);
+        currentWorld.Allreduce(local_temp,wsum_sigma2_noise[igroup].wptrAll(),ori_Fsize,MPI_FDOUBLE,MPI::SUM);
         //
         memcpy(local_temp, wsum_signal_product_spectra[igroup].wptrAll(), sizeof(FDOUBLE)*ori_Fsize);
-        MPI::COMM_WORLD.Allreduce(local_temp,wsum_signal_product_spectra[igroup].wptrAll(),ori_Fsize,MPI_FDOUBLE,MPI::SUM);
+        currentWorld.Allreduce(local_temp,wsum_signal_product_spectra[igroup].wptrAll(),ori_Fsize,MPI_FDOUBLE,MPI::SUM);
         //
         memcpy(local_temp, wsum_reference_power_spectra[igroup].rptrAll(), sizeof(FDOUBLE)*ori_Fsize);
-        MPI::COMM_WORLD.Allreduce(local_temp,wsum_reference_power_spectra[igroup].wptrAll(),ori_Fsize,MPI_FDOUBLE,MPI::SUM);
+        currentWorld.Allreduce(local_temp,wsum_reference_power_spectra[igroup].wptrAll(),ori_Fsize,MPI_FDOUBLE,MPI::SUM);
     }
     //
     memcpy(local_temp, wsum_pdf_class.rptrAll(), sizeof(FDOUBLE)*nr_classes);
-    MPI::COMM_WORLD.Allreduce(local_temp,wsum_pdf_class.wptrAll(),nr_classes,MPI_FDOUBLE,MPI::SUM);
+    currentWorld.Allreduce(local_temp,wsum_pdf_class.wptrAll(),nr_classes,MPI_FDOUBLE,MPI::SUM);
     //
     for (int iclass = 0; iclass < nr_classes; iclass++) {
         memcpy(local_temp, wsum_pdf_direction[iclass].rptrAll(), sizeof(FDOUBLE)*nr_directions);
-        MPI::COMM_WORLD.Allreduce(local_temp,wsum_pdf_direction[iclass].wptrAll(),nr_directions,MPI_FDOUBLE,MPI::SUM);
+        currentWorld.Allreduce(local_temp,wsum_pdf_direction[iclass].wptrAll(),nr_directions,MPI_FDOUBLE,MPI::SUM);
     }
     // wsum_prior_offsetx_class and wsum_prior_offsety_class is not needed for 3D
     memcpy(local_temp, wsum_prior_offsetx_class.rptrAll(), sizeof(FDOUBLE)*nr_classes);
-    MPI::COMM_WORLD.Allreduce(local_temp,wsum_prior_offsetx_class.wptrAll(),nr_classes,MPI_FDOUBLE,MPI::SUM);
+    currentWorld.Allreduce(local_temp,wsum_prior_offsetx_class.wptrAll(),nr_classes,MPI_FDOUBLE,MPI::SUM);
     //
     memcpy(local_temp, wsum_prior_offsety_class.rptrAll(), sizeof(FDOUBLE)*nr_classes);
-    MPI::COMM_WORLD.Allreduce(local_temp,wsum_prior_offsety_class.wptrAll(),nr_classes,MPI_FDOUBLE,MPI::SUM);
+    currentWorld.Allreduce(local_temp,wsum_prior_offsety_class.wptrAll(),nr_classes,MPI_FDOUBLE,MPI::SUM);
     //
     memcpy(local_temp, wsum_sumw_group.rptrAll(), sizeof(FDOUBLE)*nr_groups);
-    MPI::COMM_WORLD.Allreduce(local_temp,wsum_sumw_group.wptrAll(),nr_groups,MPI_FDOUBLE,MPI::SUM);
+    currentWorld.Allreduce(local_temp,wsum_sumw_group.wptrAll(),nr_groups,MPI_FDOUBLE,MPI::SUM);
     //
     local_temp[0] = wsum_sigma2_offset;
-    MPI::COMM_WORLD.Allreduce(local_temp,&wsum_sigma2_offset,1,MPI_FDOUBLE,MPI::SUM);
+    currentWorld.Allreduce(local_temp,&wsum_sigma2_offset,1,MPI_FDOUBLE,MPI::SUM);
     
     local_temp[0] = wsum_avg_norm_correction;
-    MPI::COMM_WORLD.Allreduce(local_temp,&wsum_avg_norm_correction,1,MPI_FDOUBLE,MPI::SUM);
+    currentWorld.Allreduce(local_temp,&wsum_avg_norm_correction,1,MPI_FDOUBLE,MPI::SUM);
     
     local_temp[0] = wsum_LL;
-    MPI::COMM_WORLD.Allreduce(local_temp,&wsum_LL,1,MPI_FDOUBLE,MPI::SUM);
+    currentWorld.Allreduce(local_temp,&wsum_LL,1,MPI_FDOUBLE,MPI::SUM);
     
     local_temp[0] = wsum_ave_Pmax;
-    MPI::COMM_WORLD.Allreduce(local_temp,&wsum_ave_Pmax,1,MPI_FDOUBLE,MPI::SUM);
+    currentWorld.Allreduce(local_temp,&wsum_ave_Pmax,1,MPI_FDOUBLE,MPI::SUM);
     
-    _mm_free(local_temp);
+    aFree(local_temp);
 #endif
 }
 
@@ -625,7 +665,7 @@ void MLModel::broadcastData()
 //    MPI::Datatype MPIDataIclass = MPIDataIclassAtom.Create_contiguous(ori_Fsize);
 //    MPIDataIclass.Commit();
 //    // manually pack the data
-//    DataIclassAtom* sendBuf = (DataIclassAtom*)_mm_malloc(sizeof(DataIclassAtom)*nr_local_classes*ori_Fsize,64);
+//    DataIclassAtom* sendBuf = (DataIclassAtom*)aMalloc(sizeof(DataIclassAtom)*nr_local_classes*ori_Fsize,64);
 //    for (int i = 0; i < nr_local_classes*ori_Fsize; i++) {
 //        sendBuf[i].sigma2_iclass = sigma2_class[first_local_class*ori_Fsize+i];
 //        sendBuf[i].tau2_iclass = tau2_class[first_local_class*ori_Fsize+i];
@@ -633,9 +673,9 @@ void MLModel::broadcastData()
 //        sendBuf[i].fsc_halves_iclass = fsc_halves_class[first_local_class*ori_Fsize+i];
 //    }
 //    // recv data
-//    DataIclassAtom* recvBuf = (DataIclassAtom*)_mm_malloc(sizeof(DataIclassAtom)*nr_classes*ori_Fsize,64);
-//    int* rcounts = (int*)_mm_malloc(sizeof(int)*ranks,64);
-//    int* displs = (int*)_mm_malloc(sizeof(int)*ranks,64);
+//    DataIclassAtom* recvBuf = (DataIclassAtom*)aMalloc(sizeof(DataIclassAtom)*nr_classes*ori_Fsize,64);
+//    int* rcounts = (int*)aMalloc(sizeof(int)*ranks,64);
+//    int* displs = (int*)aMalloc(sizeof(int)*ranks,64);
 //    for	(int rank = 0; rank < ranks; rank++){
 //        int first_local_class,last_local_class;
 //        int nr_local_classes = divide_equally(nr_classes, ranks, rank, first_local_class, last_local_class);
@@ -657,7 +697,7 @@ void MLModel::broadcastData()
 //        fsc_halves_class[i] = recvBuf[i].fsc_halves_iclass;
 //    }
 //    //
-//    _mm_free(sendBuf);_mm_free(recvBuf);_mm_free(rcounts);_mm_free(displs);
+//    aFree(sendBuf);aFree(recvBuf);aFree(rcounts);aFree(displs);
 //    MPIDataIclass.Free();
 //    MPIDataIclassAtom.Free();
 //#endif

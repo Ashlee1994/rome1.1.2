@@ -1,6 +1,5 @@
-# -*- coding: utf-8 -*-
 '''
-@auther Yongbei.Ma, Intel Parallel Computing Center for Structural Biology, Dana-Farber Cancer Institute
+@auther Yongbei.Ma
 @date 2016.04.03
 @version 1.1
 @usage : make sure you have install numpy,scipy and PIL library
@@ -31,14 +30,12 @@ import math
 from PIL import Image, ImageTk
 import numpy
 from scipy import ndimage
-import webbrowser
 
 try:
     # Python2
     import Tkinter as tk
     import tkFileDialog as filedialog
     import tkMessageBox
-
 except ImportError:
     # Python3
     import tkinter as tk
@@ -150,7 +147,7 @@ class DataHandler :
                 self.loadMrcsFile()
                 self.fileHasMrcs = True
             else :
-                print("(DataHandler.loadFile) cannot find the ",self.fileFnStar," and ",self.fileFnMrcs," file.")
+                print("(DataHandler.loadFile)cannot find the ",self.fileFnStar," and ",self.fileFnMrcs," file.")
         #---- only open mrcs file to classes view ----#
         elif ".mrcs" in fn :
             # TODO : clear the star file
@@ -161,12 +158,12 @@ class DataHandler :
                 self.loadMrcsFile()
                 self.fileHasMrcs = True
             else :
-                print("(DataHandler.loadFile) cannot find the ",self.fileFnMrcs," file.")
+                print("(DataHandler.loadFile)cannot find the ",self.fileFnMrcs," file.")
         else :
-            print("(DataHandler.loadFile) file name extension is incorrect.")
+            print("(DataHandler.loadFile)file name extension is incorrect.")
         #return flag
         self.resetStatedata()
-        print("(DataHandler.loadFile) reset state data.")
+        print("(DataHandler.loadFile)reset state data.")
         return (self.fileHasStar,self.fileHasMrcs)
 
     ############# load the star data to starData   ##################
@@ -225,12 +222,12 @@ class DataHandler :
         self.mrcshead_N     = mrcsHead[2]
         self.mrcshead_mode  = mrcsHead[3]
         if self.mrcshead_nx != self.mrcshead_ny or self.mrcshead_mode != 2:
-            print("Wrong MRCS data file.")
-        print("Load mrcs data successfully!")
-        print("Image dimesion x : ", self.mrcshead_nx)
-        print("Image dimesion y : ", self.mrcshead_ny)
-        print("    Image number : ", self.mrcshead_N)
-        print(" Image data mode : ", self.mrcshead_mode)
+            print("wrong mrcs data file.")
+        print("load mrcs data successfully")
+        print("image dimesion x : ", self.mrcshead_nx)
+        print("image dimesion y : ", self.mrcshead_ny)
+        print("    image number : ", self.mrcshead_N)
+        print(" image data mode : ", self.mrcshead_mode)
         return (self.mrcshead_nx,self.mrcshead_ny,self.mrcshead_N,self.mrcshead_mode)
 
     ############# get metadata for image   ##################
@@ -259,7 +256,7 @@ class DataHandler :
                     if N != 0:
                         self.filteredClasses.append(iclass+1)
             else:
-                print("(DataHandler.resetFilteredClassdata) can not sort class by image number distribution in gerneral view mode.")
+                print("(DataHandler.resetFilteredClassdata)can not sort class by image number distribution in gerneral view mode.")
                 self.filteredClasses = [iclass + 1 for iclass in range(self.mrcshead_N)]
 
     ###########  filter the image by selected class  ##############
@@ -285,7 +282,7 @@ class DataHandler :
         if classPageIndex < self.classPageNumber:
             self.classPageIndex = classPageIndex
         else:
-            print("(DataHandler.resetClassPagedata) wrong resetClassPagedata, classPageIndex out of range.",classPageIndex,self.classPageNumber)
+            print("(DataHandler.resetClassPagedata)wrong resetClassPagedata,classPageIndex out of range.",classPageIndex,self.classPageNumber)
         self.classPageIndex_start = self.classPageIndex*self.classPageClassesNumber
         self.classPageIndex_end   = min((self.classPageIndex+1)*self.classPageClassesNumber,len(self.filteredClasses))
         self.classPageClasses = self.filteredClasses[self.classPageIndex_start:self.classPageIndex_end]
@@ -303,7 +300,7 @@ class DataHandler :
         if imagePageIndex < self.imagePageNumber:
             self.imagePageIndex = imagePageIndex
         else:
-            print("(DataHandler.resetImagePagedata) wrong resetImagePagedata, imagePageIndex out of range.", imagePageIndex,self.imagePageNumber)
+            print("(DataHandler.resetImagePagedata)wrong resetImagePagedata,imagePageIndex out of range.", imagePageIndex,self.imagePageNumber)
         self.imagePageIndex_start = self.imagePageIndex * self.imagePageImagesNumber
         self.imagePageIndex_end = min((self.imagePageIndex + 1) * self.imagePageImagesNumber,len(self.filteredImages))
         print ("dataHander.resetImagePagedata,imagePageIndex_start = "+str(self.imagePageIndex_start)+",imagePageIndex_end = "+str(self.imagePageIndex_end)+",ImagePageNumber = "+str(self.imagePageNumber))
@@ -407,9 +404,12 @@ class DataHandler :
 
     ############  save mrcs data file as tiff file
     def saveTiffFile(self,fn_tiff):
-        for classplus1 in range(len(self.classes)):
+        for classplus1_index in range(len(self.filteredClasses)):
+            classplus1 = self.filteredClasses[classplus1_index]
             if self.getStateClassSelectOrNot(classplus1):
-                self.classes[classplus1-1].save(fn_tiff+"_class_"+str(classplus1)+".tiff")
+                save_fn = fn_tiff+"_class_"+str(classplus1)+".tiff"
+                self.classes[classplus1_index].save(save_fn)
+                print("save tiff file name : "+save_fn)
 
 ############# status viewer class,each time do some event it will show some info in bottom status bar #############
 class StatusViewer:
@@ -459,10 +459,10 @@ class TopMenu:
         #----  create file menu  ----#
         fileMenu = tk.Menu(topMenu,tearoff=0)
         topMenu.add_cascade(label = "File",menu = fileMenu)
-        fileMenu.add_command(label="Open STAR File (Particle Selection)",command = self.fileOpenStarFile)
-        fileMenu.add_command(label="Open MRCS File (General View)",command = self.fileOpenMrcsFile)
+        fileMenu.add_command(label="Open STAR File(particle selection)",command = self.fileOpenStarFile)
+        fileMenu.add_command(label="Open MRCS File(general view)",command = self.fileOpenMrcsFile)
         fileMenu.add_separator()
-        fileMenu.add_command(label="Save Selected Classes to STAR File",command = self.fileSaveStarFile)
+        fileMenu.add_command(label="Save Selected Classes into STAR File",command = self.fileSaveStarFile)
         fileMenu.add_command(label="Save Selected Classes to TIFF File",command = self.fileSaveTiffFile)
 
         #---- create edit menu  ----#
@@ -482,7 +482,7 @@ class TopMenu:
                                 command = self.viewShowAll)
         viewMenu.add_radiobutton(label = "Show Non-Empty Classes",value = "NonEmpty",variable = self.filteredMode,
                                 command = self.viewShowNonEmptyClass)
-        viewMenu.add_radiobutton(label = "Sort Classes by Image Population",
+        viewMenu.add_radiobutton(label = "Sort Classes by Images Population",
                                 value = "ByImageDist",variable = self.filteredMode,
                                 command = self.viewSortByImagesDistribution)
         viewMenu.add_separator()
@@ -494,7 +494,7 @@ class TopMenu:
         classNumberMenu = tk.Menu(topMenu,tearoff=0)
         self.classPageClassesNumber = tk.IntVar()
         self.classPageClassesNumber.set(100)
-        viewMenu.add_cascade(label = "Class Number per Page",menu = classNumberMenu)
+        viewMenu.add_cascade(label = "Each Page Classes Number",menu = classNumberMenu)
         classNumberMenu.add_radiobutton(label = "100",value = 100,variable = self.classPageClassesNumber,
                                             command = self.viewClassNumberPage)
         classNumberMenu.add_radiobutton(label = "300",value = 300,variable = self.classPageClassesNumber,
@@ -530,7 +530,7 @@ class TopMenu:
         #----  crate windows menu  ----#
         winMenu = tk.Menu(topMenu,tearoff=0)
         topMenu.add_cascade(label = "Windows",menu = winMenu)
-        winMenu.add_command(label = "Single-Particle Viewer",command = self.winImageViewer)
+        winMenu.add_command(label = "ImageViewer",command = self.winImageViewer)
 
         #----  crate help menu  ----#
         helptMenu = tk.Menu(topMenu,tearoff=0)
@@ -573,12 +573,12 @@ class TopMenu:
             self.tellClassViewerReset()
             self.statusViewer.showMessage("Load "+fn[0:-5]+".star and .mrcs data successly.")
         else :
-            self.statusViewer.showError("Cannot open file! Make sure your STAR and MRCS have the same name and in the same directory.")
+            self.statusViewer.showError("Cannot open file(make sure your star and mrcs have same name and directory).")
 
     #############  open mrcs file  #############
     def fileOpenMrcsFile(self):
         filetypes = (("mrcs files","*.mrcs"),("all files","*.*"))
-        fn = filedialog.askopenfilename(initialdir = "./",title = "Choose your file",filetypes = filetypes)
+        fn = filedialog.askopenfilename(initialdir = "./",title = "choose your file",filetypes = filetypes)
         (loadStar,loadMrcs) = self.dataHandler.loadFile(fn)
         # if fn != "":
         if (loadStar,loadMrcs) == (False,True) :
@@ -590,7 +590,7 @@ class TopMenu:
             self.tellClassViewerReset()
             self.statusViewer.showMessage("Load "+fn[0:-5]+".mrcs data successly.")
         else :
-            self.statusViewer.showError("Open MRCS file failed.")
+            self.statusViewer.showError("Open mrcs file failed.")
 
     # save the selected class to star file
     def fileSaveStarFile(self):
@@ -599,7 +599,7 @@ class TopMenu:
         # print(fn)
         if fn != "":
             self.dataHandler.saveStarFile(fn)
-        print("Save STAR file.")
+        self.statusViewer.showMessage("Save star file.")
 
     def fileSaveTiffFile(self):
         filetypes = (("tiff files", "*.tiff"), ("all files", "*.*"))
@@ -607,7 +607,7 @@ class TopMenu:
         # print(fn)
         if fn != "":
             self.dataHandler.saveTiffFile(fn)
-        print("Save TIFF file")
+        self.statusViewer.showMessage("Save tiff file.")
 
     ###################  edit bound event  #####################
     def editSelectAll(self):
@@ -622,7 +622,7 @@ class TopMenu:
         for iclassplus1 in classPageClasses:
             dataHandler.setStateClassSelectOrNot(iclassplus1,False)
         self.classesViewer.updateLabelsBG()
-        self.statusViewer.showMessage("Deselect all classes (images)")
+        self.statusViewer.showMessage("Unselect all classes (images)")
 
     def editReverseSelect(self):
         classPageClasses = dataHandler.getClassPageClasses()
@@ -630,7 +630,7 @@ class TopMenu:
             selectOrNot = dataHandler.getStateClassSelectOrNot(iclassplus1)
             dataHandler.setStateClassSelectOrNot(iclassplus1,not selectOrNot)
         self.classesViewer.updateLabelsBG()
-        self.statusViewer.showMessage("Reverse selection of all classes (images)")
+        self.statusViewer.showMessage("Reverse select all classes (images)")
 
     ###################  view bound event  #####################
     def viewShowAll(self):
@@ -648,7 +648,7 @@ class TopMenu:
     def viewSortByImagesDistribution(self):
         self.tellDataHanderReset()
         self.tellClassViewerReset()
-        self.statusViewer.showMessage("Sort the classes by image populations.")
+        self.statusViewer.showMessage("Sort the classes by images populations.")
 
     # update the page #
     def viewSetPage(self,newClassPageIndex,classPageNumber):
@@ -656,9 +656,9 @@ class TopMenu:
             self.dataHandler.resetClassPagedata(newClassPageIndex, self.classPageClassesNumber.get())
             self.dataHandler.resetClassImages()
             self.tellClassViewerReset()
-            self.statusViewer.showMessage("Show the next page : "+str(newClassPageIndex+1)+" / "+str(classPageNumber))
+            self.statusViewer.showMessage("Show next page : "+str(newClassPageIndex+1)+" / "+str(classPageNumber))
         else:
-            self.statusViewer.showError("At the end of the pages : "+str(newClassPageIndex)+" / "+str(classPageNumber))
+            self.statusViewer.showError("At end of the pages : "+str(newClassPageIndex)+" / "+str(classPageNumber))
 
     def viewNextPage(self):
         (classPageIndex,classPageNumber,classPageClassesNumber) = self.dataHandler.getClassPageIndo()
@@ -689,21 +689,21 @@ class TopMenu:
 
     def viewScalableView(self):
         self.tellClassViewerReset()
-        self.statusViewer.showMessage("Change to the scalable mode, in which you can adjust the class size by changing the windows size.")
+        self.statusViewer.showMessage("Change to scalable mode(your can adjust the class size by changing the windows size).")
 
     def viewScrolledView(self):
         self.tellClassViewerReset()
         viewingMode = self.viewingMode.get()
-        self.statusViewer.showMessage("Scrolled mode, class downsize to 1/"+str(viewingMode)+".")
+        self.statusViewer.showMessage("Scrolled mode,class downsize to 1/"+str(viewingMode)+".")
 
     def winImageViewer(self):
         self.imagesViewer.setupIamgeViewer()
 
     def helpHelp(self):
-        webbrowser.open("http://ipccsb.dfci.harvard.edu/rome/tutorial_.html")
+        print("TODO,jump to web")
 
     def helpAbout(self):
-        tkMessageBox.showinfo(u"About", "ROME2D VIEWER Version 1.1. This GUI program is part of ROME package, is designed to work with unsupervised deep classification and assists single-particle purification. Copyright © 2016. Intel Parallel Computing Center for Structural Biology at Dana-Farber Cancer Institute.")
+        tkMessageBox.showinfo("About", "ROME 1.0 ")
 
 #*** the adjustable class thumb viewer ***#
 class ClassesViewer:
@@ -739,7 +739,7 @@ class ClassesViewer:
         self.clearLables()
         # 2)reset layout if needed
         if newViewingMode == "scalable" and self.viewingMode == "scalable":
-            print("(ClassesViewer.resetClassesViewer) set scalable view mode.")
+            print("(ClassesViewer.resetClassesViewer)set scalable view mode.")
         elif newViewingMode == "scalable" and self.viewingMode == "scrolled":
             self.viewingMode = newViewingMode
             self.clearScrolledLayout()
@@ -758,9 +758,9 @@ class ClassesViewer:
             self.clearScrolledLayout()
             self.setupScrolledLayout()
         elif newViewingMode == "scrolled" and self.viewingMode == "scrolled":
-            print("(ClassesViewer.resetClassesViewer) set scrolled view mode.")
+            print("(ClassesViewer.resetClassesViewer)set scrolled view mode.")
         else:
-            print("(ClassesViewer.resetClassesViewer) not implement this viewing mode yet.")
+            print("(ClassesViewer.resetClassesViewer)not implement this viewing mode yet.")
             print("(ClassesViewer.resetClassesViewer) : " + newViewingMode)
         # 3)setup classes thunmb,donot need to clear,old one will be replace
         # TODO : keep track of filtered mode,if it is not need to change
@@ -780,7 +780,7 @@ class ClassesViewer:
         self.classesFrame.pack(fill=tk.BOTH, expand=True)
         # set up pop out menu,TODO : how to remove this in clearLayout?
         self.popMenu = tk.Menu(self.root,tearoff=0)
-        self.popMenu.add_command(label="Deselect", command=self.eventUnselectClass)
+        self.popMenu.add_command(label="Unselect", command=self.eventUnselectClass)
         # add event
         self.classesFrame.bind("<Configure>", self.eventAdjustScalableLayout)
 
@@ -798,7 +798,7 @@ class ClassesViewer:
         self.classesFrame = tk.Frame(self.scrollCanvas, background="white")
         # set up pop out menu,TODO : how to remove this in clearLayout?
         self.popMenu = tk.Menu(self.root,tearoff=0)
-        self.popMenu.add_command(label="Deselect", command=self.eventUnselectClass)
+        self.popMenu.add_command(label="Unselect", command=self.eventUnselectClass)
         # add scrollbar and bind this with canvas
         self.scrollBar = tk.Scrollbar(self.root, orient="vertical", command=self.scrollCanvas.yview)
         self.scrollCanvas.configure(yscrollcommand=self.scrollBar.set)
@@ -917,7 +917,7 @@ class ClassesViewer:
     ####################################################################################################
     #############       adjust the Frame Layout                                            #############
     def eventAdjustScalableLayout(self, event):
-        print("((ClassesViewer.eventAdjustscalableLayout) AdjustLayout, Classes Viewer Frame width = ", event.width, ", height = ", event.height)
+        print("((ClassesViewer.eventAdjustscalableLayout)AdjustLayout,Classes viewer Frame width = ", event.width, ",height = ", event.height)
         # NOTE : if we just open main windows and not open any file,return this
         # these mean we donnot get layout info and set label yet
         if (not hasattr(self, 'gridRowNum')):
@@ -937,7 +937,7 @@ class ClassesViewer:
             self.getScalableLayoutInfo()
             # update classes thumb
             if old_scale != self.scale or old_upORdown != self.upORdown:
-                print("(ClassesViewer.eventAdjustScalableLayout) AdjustLayout, update class thumb size")
+                print("(ClassesViewer.eventAdjustScalableLayout)AdjustLayout,update class thumb size")
                 for label in self.classesThumbLabel:
                     label.grid_forget()
                 # update label class
@@ -947,7 +947,7 @@ class ClassesViewer:
                 # update label layout
                 self.updateLabelsGrid()
             elif old_gridRowNum != self.gridRowNum or old_gridColNum != self.gridColNum:
-                print("(ClassesViewer.eventAdjustScalableLayout) AdjustLayout, update classes grid.")
+                print("(ClassesViewer.eventAdjustScalableLayout)AdjustLayout,update classes grid.")
                 for label in self.classesThumbLabel:
                     label.grid_forget()
                 self.updateLabelsGrid()
@@ -975,8 +975,8 @@ class ClassesViewer:
             self.tellDataHanderAndImageViewerReset(iclassplus1)
         self.currentSelectClass = iclassplus1
         (imagesDistribution, probability) = self.dataHandler.getStateClassImageNumber(iclassplus1)
-        statusMessage = "the " + str(iclassplus1 ) + "-th class. "
-        statusMessage += "class Info : images = " + str(imagesDistribution) + ", probability = " + str(probability)
+        statusMessage = "the " + str(iclassplus1 ) + "th class."
+        statusMessage += "class Info : images = " + str(imagesDistribution) + ",probability = " + str(probability)
         self.statusViewer.showMessage(statusMessage)
 
     def eventPopMenu(self,event):
@@ -991,8 +991,8 @@ class ClassesViewer:
             self.dataHandler.setStateClassSelectOrNot(iclassplus1, False)
             self.updateLabelsBG()
         (imagesDistribution, probability) = self.dataHandler.getStateClassImageNumber(iclassplus1)
-        statusMessage = "the " + str(iclassplus1) + "-th class. "
-        statusMessage += "class Info : images = " + str(imagesDistribution) + ", probability = " + str(probability)
+        statusMessage = "the " + str(iclassplus1) + "th class."
+        statusMessage += "class Info : images = " + str(imagesDistribution) + ",probability = " + str(probability)
         self.statusViewer.showMessage(statusMessage)
 
     ###################################################################################################
@@ -1035,10 +1035,10 @@ class ClassesViewer:
                 self.scale = self.scale - 1
                 (self.thumbClassSize, self.gridRowNum, self.gridColNum) = self.getLayoutInfo(self.upORdown, self.scale)
             # show status viewer message
-            statusMessage = "LayoutInfo : downsize class, scale = " + str(self.scale)
-            statusMessage += ", gridRowNum = " + str(self.gridRowNum)
-            statusMessage += ", gridColNum = " + str(self.gridColNum)
-            statusMessage += ", Thumb classSize = " + str(self.thumbClassSize)
+            statusMessage = "LayoutInfo : downsize class,scale = " + str(self.scale)
+            statusMessage += ",gridRowNum = " + str(self.gridRowNum)
+            statusMessage += ",gridColNum = " + str(self.gridColNum)
+            statusMessage += ",Thumb classSize = " + str(self.thumbClassSize)
             self.statusViewer.showMessage(statusMessage)
             # Aslo need to update grid padding,beacase sticky= not work in grid() method
             # self.gridRowPad = int((self.FrameHeight-self.borderwidth*2 - self.gridRowNum*self.thumbClassSize)/self.gridRowNum/2)
@@ -1059,7 +1059,7 @@ class ClassesViewer:
         elif mode == "up":
             thumbClassSize = math.ceil(float(self.classSize) * float(scale)) + self.borderwidth * 2
         else:
-            print("(ClassesViewer.getLayoutInfo) wrong mode for get layout info.")
+            print("(ClassesViewer.getLayoutInfo)wrong mode for get layout info.")
         # NOTE : compute the grid dimension,minus Frame borderwidth
         gridRowNum = math.floor(float(self.FrameHeight - self.borderwidth * 2) / float(thumbClassSize))
         gridColNum = math.floor(float(self.FrameWidth - self.borderwidth * 2) / float(thumbClassSize))
@@ -1083,7 +1083,7 @@ class ImagesViewer:
     def setupIamgeViewer(self):
         #-----  create top win   -----------#
         self.imageViewer = tk.Toplevel(bg='white')
-        self.imageViewer.title('ROME2D Single-Particle Viewer')
+        self.imageViewer.title('ROME2D Images Viewer')
         self.imagesThumbLabel = []
         self.FrameHeight = self.imageViewer.winfo_screenheight()/2
         self.FrameWidth = self.imageViewer.winfo_screenwidth()/2
@@ -1139,7 +1139,7 @@ class ImagesViewer:
                                             command = self.eventPopMenuImageScale)
         self.popMenu.add_separator()
         self.popMenu.add_command(label="Select All", command=self.eventPopMenuSelectAll)
-        self.popMenu.add_command(label="Deselect All", command=self.eventPopMenuUnselectAll)
+        self.popMenu.add_command(label="Unselect All", command=self.eventPopMenuUnselectAll)
         self.popMenu.add_separator()
         self.popMenu.add_command(label="Sort by Probality", command=self.eventPopMenuSortProb)
 
@@ -1158,12 +1158,12 @@ class ImagesViewer:
 
     def resetLayoutInfo(self):
         (temp1,imageSize,temp2) = self.dataHandler.getClassImages()
-        print("(imageViewer.resetLayoutInfo), image size get from class size = "+str(imageSize))
+        print("(imageViewer.resetLayoutInfo),image size get from class size = "+str(imageSize))
         thumbImageSize = math.ceil(float(imageSize) / float(self.layoutThumbScale)) + self.borderwidth * 2
         self.layoutGridRowNum = int(math.floor(float(self.FrameHeight - self.borderwidth * 2) / float(thumbImageSize)))
         self.layoutGridColNum = int(math.floor(float(self.FrameWidth  - self.borderwidth * 2) / float(thumbImageSize)))
         self.layoutGridNum = self.layoutGridRowNum*self.layoutGridColNum
-        print("(imageViewer.resetLayoutInfo), Row:"+str(self.layoutGridRowNum)+", Col:"+str(self.layoutGridColNum)+", Num:"+str(self.layoutGridNum))
+        print("(imageViewer.resetLayoutInfo),Row:"+str(self.layoutGridRowNum)+",Col:"+str(self.layoutGridColNum)+",Num:"+str(self.layoutGridNum))
 
     def eventAdjustLayout(self,event):
         # NOTE : each 21 step update,donot update frequence,high frequence will cause problem
@@ -1284,7 +1284,7 @@ class ImagesViewer:
             self.dataHandler.resetImageImages()
             self.updateLabels()
         else:
-            print("(imageViewer.eventPopMenuSetPage, out of range)"+str(newImagePageIndex)+", "+str(imagePageNumber))
+            print("(imageViewer.eventPopMenuSetPage,out of range)"+str(newImagePageIndex)+","+str(imagePageNumber))
 
     def eventPopMenuNextPage(self):
         (imagePageIndex, imagePageNumber, imagePageClassesNumber) = self.dataHandler.getImagePageInfo()
@@ -1340,7 +1340,7 @@ dataHandler = DataHandler()
 root = tk.Tk()
 root.title("ROME2D Viewer")
 # add bottom status bar
-statusViewer = StatusViewer(root,"Ready, you can open STAR and MRCS file first.")
+statusViewer = StatusViewer(root,"Preparing,you should open file first.")
 # add assist viewer
 imagesViewer = ImagesViewer(root,dataHandler)
 # add images viewer

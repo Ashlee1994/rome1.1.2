@@ -18,6 +18,8 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "fft_base.h"
 
 #define CLASS_NAME FFTWBase

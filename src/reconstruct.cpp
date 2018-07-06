@@ -17,7 +17,8 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
-/***************************************************************************
+
+ /***************************************************************************
  *
  * Author: "Sjors H.W. Scheres"
  * MRC Laboratory of Molecular Biology
@@ -36,6 +37,7 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
+#include "util.h"		// used for building precompiled headers on Windows
 
 #include "reconstruct.h"
 
@@ -135,7 +137,7 @@ void MyProjector::computeFourierTransformMap(Vol<FDOUBLE>& ref_in,int _ori_size,
 #endif
 
     Vol<FDOUBLE> Mpad,MpadCenter;
-    Mpad.init(_ref_dim==3?padoridim:1, padoridim, padoridim);
+    Mpad      .init(_ref_dim==3?padoridim:1, padoridim, padoridim);
     MpadCenter.init(_ref_dim==3?padoridim:1, padoridim, padoridim);
     //
     int ori_size_shift = -(int)((float) (ori_size) / 2.0);
@@ -147,13 +149,15 @@ void MyProjector::computeFourierTransformMap(Vol<FDOUBLE>& ref_in,int _ori_size,
                 int y = i + ori_size_shift - padoridim_shift;
                 int x = j + ori_size_shift - padoridim_shift;
                 Mpad(z,y,x) = ref_in(k,i,j);
-            }}}
+            }
+        }
+    }
     
     // Translate padded map to put origin of FT in the center
     if(ref_dim==3)
-        centerFFT3D(Mpad.wptr(),MpadCenter.wptr(),padoridim,true);
+        centerFFT3D(Mpad.rptr(),MpadCenter.wptr(),padoridim,true);
     else
-    	centerFFT2D(Mpad.wptr(),MpadCenter.wptr(),padoridim,true);
+    	centerFFT2D(Mpad.rptr(),MpadCenter.wptr(),padoridim,true);
     
     Mpad.fini();
     Vol<MKL_Complex> Faux;
@@ -461,7 +465,14 @@ void MyProjector::projectOneTile(FDOUBLE* f2d_real,FDOUBLE* f2d_imag,int n_start
                 Ainv[i][j] = A[j][i]*(FDOUBLE)padding_factor;
     }
     
-    int i_start = n_start/(f2d_size/2+1);
+	// Crudely approximate the accessed cells.  Crude for f2d. Even more so for data since doesn't include the transform
+	// but since our intent is to do ones that use the same cells, it will do for the current analysis...
+	L2CacheModel::seqAcc("projectOneTile f2d_real", -1, &f2d_real[0], n_end - n_start + 1, sizeof(f2d_real[0]));
+	L2CacheModel::seqAcc("projectOneTile f2d_imag", -1, &f2d_imag[0], n_end - n_start + 1, sizeof(f2d_imag[0]));
+	L2CacheModel::seqAcc("projectOneTile data",     -1, &data(0, 0, 0), size_t(my_r_max*my_r_max*3.1415), sizeof(data(0, 0, 0)));
+
+	// Do it
+	int i_start = n_start/(f2d_size/2+1);
     int i_end = (n_end-1)/(f2d_size/2+1);
     int x_start,x_end;
     // initialize to zero
@@ -610,6 +621,204 @@ void MyProjector::projectOneTile(FDOUBLE* f2d_real,FDOUBLE* f2d_imag,int n_start
     // write out 2D ref
 #endif
 }
+
+void MyProjector::projectOneTileByShell(FDOUBLE* f2d_real,FDOUBLE* f2d_imag,int shell_n_start,int shell_n_end,
+                                        int f2d_size,const FDOUBLE A[][3],bool inv,const int* nIndex)
+{
+    // TODO: it need to test other padding_factor,interpolator,r_min_nn can be work right!
+    assert(0<=shell_n_start);assert(shell_n_start<=shell_n_end);
+    assert(shell_n_end<=f2d_size*(f2d_size/2+1));
+    FDOUBLE fx, fy, fz, xp, yp,zp;
+    int x0, x1, y0, y1, z0, z1, y, y2, r2;
+    bool is_neg_x;
+    
+#define COMPLEX(N) FDOUBLE N##_real,N##_imag;
+    
+    COMPLEX(d000) COMPLEX(d001) COMPLEX(d010)
+    COMPLEX(d011) COMPLEX(d100) COMPLEX(d101)
+    COMPLEX(d110) COMPLEX(d111)
+    
+    COMPLEX(dx00) COMPLEX(dx01) COMPLEX(dx10)
+    COMPLEX(dx11) COMPLEX(dxy0) COMPLEX(dxy1)
+    
+#undef COMPLEX
+    
+    FDOUBLE Ainv[3][3];
+    
+    assert(f2d_size/2 <= r_max);
+    int my_r_max = std::min(r_max,f2d_size/2);
+    // Go from the 2D slice coordinates to the map coordinates
+    int max_r2 = my_r_max * my_r_max;
+    int min_r2_nn = r_min_nn * r_min_nn;
+    
+#ifdef DEBUG_PROJECT
+    std::cout<<" r_max = "<<r_max<<std::endl;
+    std::cout<<" r_min_nn = "<<r_min_nn<<std::endl;
+    std::cout<<" max_r2 = "<<max_r2<<std::endl;
+    std::cout<<" min_r2_nn = "<<min_r2_nn<<std::endl;
+    std::cout<<" pad_Fsize = "<<pad_Fsize<<std::endl;
+    std::cout<<" Fref_size = "<<Fref_size<<std::endl;
+#endif
+    
+    int f2d_Fsize = f2d_size/2 + 1;
+    //int Fref_pad_size_shift = -(int)((float) (fref_pad_size) / 2.0);
+    int pad_size_shift = -(int)((float)(pad_size)/2.0);
+    // for (int i = 0; i < f2d_size*f2d_Fsize; i++)
+    //     f2d_real[i] = f2d_imag[i] = 0;
+    
+    // Use the inverse matrix
+    if (inv){
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                Ainv[i][j] = A[i][j]*(FDOUBLE)padding_factor;
+    }
+    else{
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                Ainv[i][j] = A[j][i]*(FDOUBLE)padding_factor;
+    }
+
+	// Crudely approximate the accessed cells.  Ok for f2d but for data doesn't include the transform
+	// but since our intent is to do ones that use the same cells, it will do for the current analysis...
+	L2CacheModel::seqAcc("projectOneTileByShell f2d_real", -1, &f2d_real[shell_n_start], shell_n_end - shell_n_start,	 sizeof(f2d_real[shell_n_start]));
+	L2CacheModel::seqAcc("projectOneTileByShell f2d_imag", -1, &f2d_imag[shell_n_start], shell_n_end - shell_n_start,	 sizeof(f2d_imag[shell_n_start]));
+	L2CacheModel::seqAcc("projectOneTileByShell data",     -1, &data(0, 0, 0),		   size_t(my_r_max*my_r_max*3.1415), sizeof(data(0, 0, 0)));
+
+    // initialize to zero
+    for (int shell_n = shell_n_start; shell_n < shell_n_end; shell_n++) {
+        f2d_real[shell_n] = f2d_imag[shell_n] = 0.;
+    }
+    
+    //
+    for (int shell_n = shell_n_start; shell_n < shell_n_end; shell_n++)
+    {
+        int n = nIndex[shell_n];
+        int i = n / (f2d_size/2+1);
+        // Don't search beyond square with side max_r
+        if (i <= my_r_max)
+        {
+            y = i;
+        }
+        else if (i >= f2d_size - my_r_max)
+        {
+            y = i - f2d_size;
+        }
+        else
+            continue;
+        //
+        int x = n % (f2d_size/2+1);
+        y2 = y * y;
+        // Only include points with radius < max_r (exclude points outside circle in square)
+        r2 = x * x + y2;
+        if (r2 > max_r2) // always not meet??
+            continue;
+            
+        // Get logical coordinates in the 3D map
+        xp = Ainv[0][0] * x + Ainv[0][1] * y;
+        yp = Ainv[1][0] * x + Ainv[1][1] * y;
+        zp = Ainv[2][0] * x + Ainv[2][1] * y;
+        
+#ifdef DEBUG_PROJECT
+        std::cout<<xp<<" "<<yp<<" "<<zp<<std::endl;
+#endif
+        if (interpolator == TRILINEAR || r2 < min_r2_nn)
+        {
+            // Only asymmetric half is stored
+            if (xp < 0)
+            {
+                // Get complex conjugated hermitian symmetry pair
+                xp = -xp;
+                yp = -yp;
+                zp = -zp;
+                is_neg_x = true;
+            }
+            else
+            {
+                is_neg_x = false;
+            }
+            
+            // Trilinear interpolation (with physical coords)
+            // Subtract STARTINGY to accelerate access to data (STARTINGX=0)
+            x0 = floor(xp);
+            fx = xp - x0;
+            x1 = x0 + 1;
+            
+            y0 = floor(yp);
+            fy = yp - y0;
+            y0 -= pad_size_shift;
+            y1 = y0 + 1;
+            
+            z0 = floor(zp);
+            fz = zp - z0;
+            z0 -= pad_size_shift;
+            z1 = z0 + 1;
+            
+#ifdef DEBUG_PROJECT
+            std::cout<<x0<<" "<<x1<<" "<<y0<<" "<<y1<<" "<<z0<<" "<<z1<<std::endl;
+#endif
+            // Matrix access can be accelerated through pre-calculation of z0*xydim etc.
+            const auto data000 = &data(z0, y0, x0).real;
+            d000_real = data000[0];d000_imag = data000[1];
+            d001_real = data000[2];d001_imag = data000[3];
+            
+            const auto data010 = &data(z0, y1, x0).real;
+            d010_real = data010[0];d010_imag = data010[1];
+            d011_real = data010[2];d011_imag = data010[3];
+            
+            const auto data100 = &data(z1, y0, x0).real;
+            d100_real = data100[0];d100_imag = data100[1];
+            d101_real = data100[2];d101_imag = data100[3];
+            
+            const auto data110 = &data(z1,y1,x0).real;
+            d110_real = data110[0];d110_imag = data110[1];
+            d111_real = data110[2];d111_imag = data110[3];
+            
+            // Set the interpolated value in the 2D output array
+            
+            dx00_real = lin_interp(fx, d000_real, d001_real);
+            dx00_imag = lin_interp(fx, d000_imag, d001_imag);
+            dx01_real = lin_interp(fx, d100_real, d101_real);
+            dx01_imag = lin_interp(fx, d100_imag, d101_imag);
+            dx10_real = lin_interp(fx, d010_real, d011_real);
+            dx10_imag = lin_interp(fx, d010_imag, d011_imag);
+            dx11_real = lin_interp(fx, d110_real, d111_real);
+            dx11_imag = lin_interp(fx, d110_imag, d111_imag);
+            
+            dxy0_real = lin_interp(fy, dx00_real, dx10_real);
+            dxy0_imag = lin_interp(fy, dx00_imag, dx10_imag);
+            dxy1_real = lin_interp(fy, dx01_real, dx11_real);
+            dxy1_imag = lin_interp(fy, dx01_imag, dx11_imag);
+            
+            f2d_real[shell_n] = lin_interp(fz, dxy0_real, dxy1_real);
+            f2d_imag[shell_n] = lin_interp(fz, dxy0_imag, dxy1_imag);
+            //std::cout<<Fref_real[i*Fref_Fsize+x]<<" "<<Fref_imag[i*Fref_Fsize+x]<<std::endl;
+            // Take complex conjugated for half with negative x
+            if (is_neg_x){
+                f2d_real[shell_n] = f2d_real[shell_n];
+                f2d_imag[shell_n] = -1.0*f2d_imag[shell_n];
+            }
+        } // endif TRILINEAR
+        else if (interpolator == NEAREST_NEIGHBOUR )
+        {
+            x0 = round(xp);
+            y0 = round(yp);
+            z0 = round(zp);
+            
+            if (x0 < 0){
+                f2d_real[shell_n] = data(-y0-pad_size_shift,-x0,-z0-pad_size_shift).real;
+                f2d_imag[shell_n] = -1*data(-y0-pad_size_shift,-x0,-z0-pad_size_shift).imag;
+            }
+            else{
+                f2d_real[shell_n] = data(y0-pad_size_shift,x0,z0-pad_size_shift).real;
+                f2d_imag[shell_n] = data(y0-pad_size_shift,x0,z0-pad_size_shift).imag;
+            }
+        } // endif NEAREST_NEIGHBOUR
+    } // endif shell_n
+#ifdef DEBUG_CLASSPROJECTOR
+    // write out 2D ref
+#endif
+}
+
 
 void MyProjector::rotate2D(FDOUBLE* f2d_real,FDOUBLE* f2d_imag,int f2d_size, const FDOUBLE A[][3],bool inv)
 {
@@ -952,6 +1161,193 @@ void MyBackProjector::backproject(const FDOUBLE* f2d_real,const FDOUBLE* f2d_ima
             } // endif weight>0.
         } // endif x-loop
     } // endif y-loop
+}
+
+void MyBackProjector::backprojectOneTileByShell(const FDOUBLE* f2d_real,const FDOUBLE* f2d_imag,int shell_n_start,int shell_n_end,
+                                                int f2d_size,const FDOUBLE A[][3], bool inv,Vol<MKL_Complex>& data_td,
+                                                Vol<FDOUBLE>& weight_td,const FDOUBLE* Mweight,const int* nIndex)
+{
+    FDOUBLE fx, fy, fz, mfx, mfy, mfz, xp, yp, zp;
+    int first_x, x0, x1, y0, y1, z0, z1, y, y2, r2;
+    bool is_neg_x;
+    FDOUBLE dd000, dd001, dd010, dd011, dd100, dd101, dd110, dd111;
+    FDOUBLE my_val_real,my_val_imag;
+    FDOUBLE Ainv[3][3];
+    FDOUBLE my_weight = 1.;
+    
+    int f2d_Fsize = f2d_size/2 + 1;
+    int pad_size_shift = -(int)((float)(pad_size)/2.0);
+    // f2d should already be in the right size (ori_size,orihalfdim)
+    // AND the points outside max_r should already be zero...
+    
+    // Use the inverse matrix
+    if (inv){
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                Ainv[i][j] = A[i][j]*(FDOUBLE)padding_factor;
+    }
+    else{
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                Ainv[i][j] = A[j][i]*(FDOUBLE)padding_factor;
+    }
+    
+    // Go from the 2D slice coordinates to the 3D coordinates
+    int max_r2 = r_max * r_max;
+    int min_r2_nn = r_min_nn * r_min_nn;
+    
+    //#define DEBUG_BACKP
+#ifdef DEBUG_BACKP
+    //
+#endif
+    
+    for (int shell_n = shell_n_start; shell_n < shell_n_end; shell_n++)
+    {
+        int n = nIndex[shell_n];
+        int i = n / (f2d_size/2+1);
+        // Dont search beyond square with side max_r
+        if (i <= r_max)
+        {
+            y = i;
+            first_x = 0;
+        }
+        else if (i >= f2d_size - r_max)
+        {
+            y = i - f2d_size;
+            // x==0 plane is stored twice in the FFTW format. Dont set it twice in BACKPROJECTION!
+            first_x = 1;
+        }
+        else
+            continue;
+        //
+        int x = n % (f2d_size/2+1);
+        if (x < first_x)
+            continue;
+        y2 = y * y;
+        // Only include points with radius < max_r (exclude points outside circle in square)
+        r2 = x * x + y2;
+        if (r2 > max_r2) // always not meet??
+            continue;
+        
+        // Get the relevant value in the input image
+        my_val_real = f2d_real[shell_n];
+        my_val_imag = f2d_imag[shell_n];
+        // Get the weight
+        if (Mweight != NULL)
+            my_weight = Mweight[shell_n];
+        // else: my_weight was already initialised to 1.
+        // std::cout<<shell_n<<" "<<y<<" "<<x<<" "<<my_val_real<<" "<<my_val_imag<<" "<<my_weight<<std::endl;
+        if (my_weight > 0.)
+        {
+            
+            // Get logical coordinates in the 3D map
+            xp = Ainv[0][0] * x + Ainv[0][1] * y;
+            yp = Ainv[1][0] * x + Ainv[1][1] * y;
+            zp = Ainv[2][0] * x + Ainv[2][1] * y;
+            
+            if (interpolator == TRILINEAR || r2 < min_r2_nn)
+            {
+                
+                // Only asymmetric half is stored
+                if (xp < 0)
+                {
+                    // Get complex conjugated hermitian symmetry pair
+                    xp = -xp;
+                    yp = -yp;
+                    zp = -zp;
+                    is_neg_x = true;
+                }
+                else
+                {
+                    is_neg_x = false;
+                }
+                
+                // Trilinear interpolation (with physical coords)
+                // Subtract STARTINGY and STARTINGZ to accelerate access to data (STARTINGX=0)
+                // In that way use DIRECT_A3D_ELEM, rather than A3D_ELEM
+                x0 = floor(xp);
+                fx = xp - x0;
+                x1 = x0 + 1;
+                
+                y0 = floor(yp);
+                fy = yp - y0;
+                y0 -=  pad_size_shift;
+                y1 = y0 + 1;
+                
+                z0 = floor(zp);
+                fz = zp - z0;
+                z0 -= pad_size_shift;
+                z1 = z0 + 1;
+                
+                mfx = 1. - fx;
+                mfy = 1. - fy;
+                mfz = 1. - fz;
+                
+                dd000 = mfz * mfy * mfx;
+                dd001 = mfz * mfy *  fx;
+                dd010 = mfz *  fy * mfx;
+                dd011 = mfz *  fy *  fx;
+                dd100 =  fz * mfy * mfx;
+                dd101 =  fz * mfy *  fx;
+                dd110 =  fz *  fy * mfx;
+                dd111 =  fz *  fy *  fx;
+                
+                if (is_neg_x){
+                    my_val_real = my_val_real;
+                    my_val_imag = -my_val_imag;
+                }
+                // Store slice in 3D weighted sum
+                assert(x0>=0);assert(y0>=0);assert(z0>=0);
+                // TODO. merge (real,imag,weight) to better memory fetch
+                auto data_td000 = &data_td(z0, y0, x0).real;
+                data_td000[0] += dd000 * my_val_real;data_td000[1] += dd000 * my_val_imag;
+                data_td000[2] += dd001 * my_val_real;data_td000[3] += dd001 * my_val_imag;
+                auto data_td010 = &data_td(z0, y1, x0).real;
+                data_td010[0] += dd010 * my_val_real;data_td010[1] += dd010 * my_val_imag;
+                data_td010[2] += dd011 * my_val_real;data_td010[3] += dd011 * my_val_imag;
+                auto data_td100 = &data_td(z1, y0, x0).real;
+                data_td100[0] += dd100 * my_val_real;data_td100[1] += dd100 * my_val_imag;
+                data_td100[2] += dd101 * my_val_real;data_td100[3] += dd101 * my_val_imag;
+                auto data_td110 = &data_td(z1, y1, x0).real;
+                data_td110[0] += dd110 * my_val_real;data_td110[1] += dd110 * my_val_imag;
+                data_td110[2] += dd111 * my_val_real;data_td110[3] += dd111 * my_val_imag;
+                
+                auto weight_td000 = &weight_td(z0, y0, x0);
+                weight_td000[0] += dd000 * my_weight;weight_td000[1] += dd001 * my_weight;
+                auto weight_td010 = &weight_td(z0, y1, x0);
+                weight_td010[0] += dd010 * my_weight;weight_td010[1] += dd011 * my_weight;
+                auto weight_td100 = &weight_td(z1, y0, x0);
+                weight_td100[0] += dd100 * my_weight;weight_td100[1] += dd101 * my_weight;
+                auto weight_td110 = &weight_td(z1, y1, x0);
+                weight_td110[0] += dd110 * my_weight;weight_td110[1] += dd111 * my_weight;
+            } // endif TRILINEAR
+            else if (interpolator == NEAREST_NEIGHBOUR )
+            {
+                
+                x0 = round(xp);
+                y0 = round(yp);
+                z0 = round(zp);
+                
+                if (x0 < 0)
+                {
+                    ACCESS(data_td, -z0, -y0, -x0).real += my_val_real;
+                    ACCESS(data_td, -z0, -y0, -x0).imag += (-my_val_imag);
+                    ACCESS(weight_td, -z0, -y0, -x0) += my_weight;
+                }
+                else
+                {
+                    ACCESS(data_td, z0, y0, x0).real += my_val_real;
+                    ACCESS(data_td, z0, y0, x0).imag += my_val_imag;
+                    ACCESS(weight_td, z0, y0, x0) += my_weight;
+                }
+                
+            } // endif NEAREST_NEIGHBOUR
+            else
+            {
+                ERROR_REPORT("FourierInterpolator::backproject%%ERROR: unrecognized interpolator ");
+            }
+        } // endif weight>0.
+    } // endif shell-n-loop
 }
 
 void MyBackProjector::backrotate2D(const FDOUBLE* f2d_real,const FDOUBLE* f2d_imag,int f2d_size,const FDOUBLE A[][3], bool inv,
@@ -1350,6 +1746,17 @@ void MyBackProjector::convoluteBlobRealSpace(Vol<MKL_Complex>& Fconv, FourierTra
     //blob.alpha = 15;
     
     // Multiply with FT of the blob kernel
+	if (1) {
+		static int previouslyReported = 0;
+		if (previouslyReported != transformer.nr_threads) {
+			#pragma omp critical 
+			if (previouslyReported != transformer.nr_threads) {
+				previouslyReported = transformer.nr_threads;
+				MASTERNODE std::cerr << __FILE__ << ":" << __LINE__ << " convoluteBlobRealSpace() transformer.nr_threads:" << transformer.nr_threads << std::endl;
+			}
+		}
+	}
+
 #pragma omp parallel for collapse(2) if(transformer.nr_threads > 1) num_threads(transformer.nr_threads)
     for (int k = 0;k < Mconv.dimz;k++){
         for (int i = 0;i < Mconv.dimy;i++){
@@ -1534,40 +1941,6 @@ void MyBackProjector::reconstruct(	Vol<FDOUBLE> &vol_out,
 									int nr_threads/* = 1*/,
                                     std::string tmp_folder/* = "NULL"*/)
 {
-//#define PRINT_RESULT
-    auto printSum = [&](FDOUBLE* A,int L,char* what){
-#ifdef PRINT_RESULT
-        double sum = 0;
-        std::cout.precision(50);
-        for(int i = 0;i < L;i++) sum += A[i];
-        std::cout<<what<<"1~3 elements : "<<A[0]<<" "<<A[1]<<" "<<A[2]<<",sum = "<<sum<<std::endl;
-#endif
-    };
-    auto printSumDouble = [&](double* A,int L,char* what){
-#ifdef PRINT_RESULT
-        double sum = 0;
-        std::cout.precision(50);
-        for(int i = 0;i < L;i++) sum += A[i];
-        std::cout<<what<<"1~3 elements : "<<A[0]<<" "<<A[1]<<" "<<A[2]<<",sum = "<<sum<<std::endl;
-#endif
-    };
-    auto printSum_real = [&](MKL_Complex* A,int L,char* what){
-#ifdef PRINT_RESULT
-        double sum = 0;
-        std::cout.precision(50);
-        for(int i = 0;i < L;i++) sum += A[i].real;
-        std::cout<<what<<"1~3 elements : "<<A[0].real<<" "<<A[1].real<<" "<<A[2].real<<",sum = "<<sum<<std::endl;
-#endif
-    };
-    auto printSum_imag = [&](MKL_Complex* A,int L,char* what){
-#ifdef PRINT_RESULT
-        double sum = 0;
-        std::cout.precision(50);
-        for(int i = 0;i < L;i++) sum += A[i].imag;
-        std::cout<<what<<"1~3 elements : "<<A[0].imag<<" "<<A[1].imag<<" "<<A[2].imag<<",sum = "<<sum<<std::endl;
-#endif
-    };
-    
     // the Vol_out,taus,sigma2,data_vs_prior and fsc should be already in right size
     FourierTransformerBase transformer;
     Vol<MKL_Complex> Fconv;
@@ -1681,20 +2054,11 @@ void MyBackProjector::reconstruct(	Vol<FDOUBLE> &vol_out,
         }
     }
     printSum(&sigma2[0],ori_Fsize,"sigma2 after init 2");
-    // TODO...
     if (update_tau2_with_fsc)
     {
         for (int i = 0; i < ori_Fsize; i++)
             data_vs_prior[i] = 0.;
         // Then calculate new tau2 values, based on the FSC
-        // if (!fsc.sameShape(sigma2) || !fsc.sameShape(tau2))
-        // {
-        //     fsc.printShape(std::cerr);
-        //     tau2.printShape(std::cerr);
-        //     sigma2.printShape(std::cerr);
-        //     REPORT_ERROR("ERROR BackProjector::reconstruct: sigma2, tau2 and fsc have different sizes");
-        // }
-        // FOR_ALL_DIRECT_ELEMENTS_IN_ARRAY1D(sigma2)
         for (int i = 0; i < ori_Fsize; i++)
         {
             // FSC cannot be negative or zero for conversion into tau2
@@ -2025,7 +2389,8 @@ void MyBackProjector::reconstruct(	Vol<FDOUBLE> &vol_out,
                     Ftmp(k, i, j).real = Ftmp(k, i, j).imag = 0.;
                 }
             }
-    }}
+    	}
+    }
     
     printSum_real(Ftmp.wptr(),Ftmp.dimzyx,"Ftmp_real after set");
     printSum_imag(Ftmp.wptr(),Ftmp.dimzyx,"Ftmp_imag after set");
@@ -2072,7 +2437,8 @@ void MyBackProjector::reconstruct(	Vol<FDOUBLE> &vol_out,
                 //if (k==0 && i==0)
                 //	std::cerr << " j= " << j << " rval= " << rval << " tab_ftblob(rval) / normftblob= " << tab_ftblob(rval) / normftblob << std::endl;
             }
-    }}
+    	}
+    }
     tmp.fini();Ftmp.fini();
     printSum(vol_out.wptr(),vol_out.dimzyx,"vol_out after blob.");
     
@@ -2103,31 +2469,31 @@ void MyBackProjector::reconstruct(	Vol<FDOUBLE> &vol_out,
     griddingCorrect(vol_out);
     
     printSum(vol_out.wptr(),vol_out.dimzyx,"vol_out after gridding correct");
-    // TODO....
     // If the tau-values were calculated based on the FSC, then now re-calculate the power spectrum of the actual reconstruction
     if (update_tau2_with_fsc)
     {
         // New tau2 will be the power spectrum of the new map
-        std::vector<FDOUBLE> spectrum(ori_Fsize,0);
-        std::vector<FDOUBLE> count(ori_Fsize,0);
+        std::vector<FDOUBLE> spectrum(vol_out.dimx,0);
+        std::vector<FDOUBLE> count(vol_out.dimx,0);
         // Calculate this map's power spectrum
         // Don't call getSpectrum() because we want to use the same transformer object to prevent memory trouble....
         // recycle the same transformer for all images
         Fconv.fini();Fconv.init(ori_size, ori_size, ori_Fsize);
         transformer.reset_plan(vol_out.wptr(), (FourierComplex*)Fconv.wptr(), vol_out.dimx, vol_out.dimy, vol_out.dimz);
         transformer.FourierTransform();
-        for (int k = 0; k<Fconv.dimz; k++){
-            for (int i = 0; i<Fconv.dimy; i++){
+        for (int k = 0; k < Fconv.dimz; k++){
+            for (int i = 0; i < Fconv.dimy; i++){
                 int kp = (k < Fconv.dimx) ? k : k - Fconv.dimz;
                 int ip = (i < Fconv.dimx) ? i : i - Fconv.dimy;
-                for (int j = 0; j<Fconv.dimx; j++)
+                for (int j = 0; j < Fconv.dimx; j++)
                 {
                     int jp = j;
                     int idx = round(sqrt(kp*kp + ip*ip + jp*jp));
-                    spectrum[idx] += Fconv(k, i, j).real*Fconv(k, i, j).imag;
+                    spectrum[idx] += ACCESS(Fconv, k, i, j).real*ACCESS(Fconv, k, i, j).real+ACCESS(Fconv, k, i, j).imag*ACCESS(Fconv, k, i, j).imag;
                     count[idx] += 1.;
                 }
-        }}
+        	}
+        }
         for(int i = 0;i < ori_Fsize;i++)
             spectrum[i] /= count[i];
         
@@ -2138,12 +2504,10 @@ void MyBackProjector::reconstruct(	Vol<FDOUBLE> &vol_out,
             spectrum[i] *= normfft / 2.;
         
         // New SNR^MAP will be power spectrum divided by the noise in the reconstruction (i.e. sigma2)
-        // FOR_ALL_DIRECT_ELEMENTS_IN_MULTIDIMARRAY(data_vs_prior)
         for (int n = 0; n < ori_Fsize; n++)
         {
             tau2[n] =  tau2_fudge * spectrum[n];
         }
-        
     }
     TIMEPOINT
     // Completely empty the transformer object
@@ -2158,5 +2522,191 @@ void MyBackProjector::reconstruct(	Vol<FDOUBLE> &vol_out,
 #ifdef DEBUG_RECONSTRUCT
     std::cerr<<"done with reconstruct"<<std::endl;
 #endif
+    
+}
+
+void MyBackProjector::getLowResDataAndWeight(Vol<MKL_Complex > &lowres_data, Vol<FDOUBLE> &lowres_weight,int lowres_r_max)
+{
+    int lowres_r2_max = padding_factor * padding_factor * lowres_r_max * lowres_r_max;
+    int lowres_pad_size = 2 * (padding_factor * lowres_r_max + 1) + 1;
+    
+    // Check for dimension
+    if (ref_dim != 3)
+        ERROR_REPORT("MyBackProjector::getLowResDataAndWeight%%ERROR: only implemented for 3D case....");
+    
+    // Check lowres_r_max is not too big
+    if (lowres_r_max > r_max)
+        ERROR_REPORT("MyBackProjector::getLowResDataAndWeight%%ERROR: lowres_r_max is bigger than r_max");
+    
+    // Initialize lowres_data and low_res_weight arrays
+    lowres_data.init(lowres_pad_size, lowres_pad_size, lowres_pad_size/2+1);
+    lowres_weight.init(lowres_pad_size, lowres_pad_size, lowres_pad_size/2+1);
+    
+    // fill lowres arrays with relevant values
+    int lowres_data_origin_z = XMIPP_ORIGIN(lowres_data.dimz);
+    int lowres_data_origin_y = XMIPP_ORIGIN(lowres_data.dimy);
+    int data_origin_z = XMIPP_ORIGIN(data.dimz);
+    int data_origin_y = XMIPP_ORIGIN(data.dimy);
+    for (int k = 0; k < lowres_data.dimz; k++){
+        for (int i = 0; i < lowres_data.dimy; i++){
+            int kp = k + lowres_data_origin_z;
+            int ip = i + lowres_data_origin_y;
+            for (int j = 0; j < lowres_data.dimx; j++)
+            {
+                int jp = j;
+                if (kp*kp + ip*ip + jp*jp <= lowres_r2_max)
+                {
+                    int k2 = kp - data_origin_z;
+                    int i2 = ip - data_origin_y;
+                    int j2 = jp;
+                    ACCESS(lowres_data, k, i, j) = ACCESS(data, k2 , i2, j2);
+                    ACCESS(lowres_weight, k, i, j) = ACCESS(weight, k2 , i2, j2);
+                }
+            }
+        }
+    }
+}
+
+void MyBackProjector::setLowResDataAndWeight(Vol<MKL_Complex > &lowres_data, Vol<FDOUBLE> &lowres_weight,int lowres_r_max)
+{
+    int lowres_r2_max = padding_factor * padding_factor * lowres_r_max * lowres_r_max;
+    int lowres_pad_size = 2 * (padding_factor * lowres_r_max + 1) + 1;
+    
+    // Check for dimension
+    if (ref_dim != 3)
+        ERROR_REPORT("MyBackProjector::getLowResDataAndWeight%%ERROR: only implemented for 3D case....");
+    
+    // Check lowres_r_max is not too big
+    if (lowres_r_max > r_max)
+        ERROR_REPORT("MyBackProjector::getLowResDataAndWeight%%ERROR: lowres_r_max is bigger than r_max");
+    
+    // Check sizes of lowres_data and lowres_weight
+    if (lowres_data.dimz != lowres_pad_size || lowres_data.dimy != lowres_pad_size || lowres_data.dimx != lowres_pad_size / 2 + 1)
+        ERROR_REPORT("MyBackProjector::setLowResDataAndWeight%%ERROR: lowres_data is not of expected size...");
+    if (lowres_weight.dimz != lowres_pad_size || lowres_weight.dimy != lowres_pad_size || lowres_weight.dimx != lowres_pad_size / 2 + 1)
+        ERROR_REPORT("MyBackProjector::setLowResDataAndWeight%%ERROR: lowres_weight is not of expected size...");
+    
+    // Re-set origin to the expected place
+    
+    // Overwrite data and weight with the lowres arrays
+    int lowres_data_origin_z = XMIPP_ORIGIN(lowres_data.dimz);
+    int lowres_data_origin_y = XMIPP_ORIGIN(lowres_data.dimy);
+    int data_origin_z = XMIPP_ORIGIN(data.dimz);
+    int data_origin_y = XMIPP_ORIGIN(data.dimy);
+    for (int k = 0; k < lowres_data.dimz; k++) {
+        for (int i = 0; i < lowres_data.dimy; i++) {
+            int kp = k + lowres_data_origin_z;
+            int ip = i + lowres_data_origin_y;
+            for (int j = 0; j < lowres_data.dimx; j++) {
+                int jp = j;
+                if (kp*kp + ip*ip + jp*jp <= lowres_r2_max)
+                {
+                    int k2 = kp - data_origin_z;
+                    int i2 = ip - data_origin_y;
+                    int j2 = jp;
+                    ACCESS(data, k2, i2, j2) = ACCESS(lowres_data, k , i, j);
+                    ACCESS(weight, k2, i2, j2) = ACCESS(lowres_weight, k , i, j);
+                }
+            }
+        }
+    }
+}
+
+void MyBackProjector::getDownsampledAverage(Vol<MKL_Complex > &avg)
+{
+    Vol<FDOUBLE> down_weight;
+    // Pre-set down_data and down_weight sizes
+    int down_size = 2 * (r_max + 1) + 1;
+    int r2_max = r_max * r_max;
+    // Short side of data array
+    ERROR_CHECK(ref_dim!=3, "MyBackProjector::getDownsampledAverage%%ERROR: Dimension of the data array should be 3");
+    avg.init(down_size,down_size,down_size/2+1);
+    // Resize down_weight the same as down_data
+    down_weight.init(down_size,down_size,down_size/2+1);
+    
+    // Now calculate the down-sized sum
+    int data_origin_z = XMIPP_ORIGIN(data.dimz);
+    int data_origin_y = XMIPP_ORIGIN(data.dimy);
+    int avg_origin_z = XMIPP_ORIGIN(avg.dimz);
+    int avg_origin_y = XMIPP_ORIGIN(avg.dimy);
+    for (int k = 0; k < data.dimz; k++){
+        for (int i = 0; i < data.dimy; i++) {
+            int k2 = round((FDOUBLE)(k + data_origin_z)/padding_factor)-avg_origin_z;
+            int i2 = round((FDOUBLE)(i + data_origin_y)/padding_factor)-avg_origin_y;
+            for (int j = 0; j < data.dimx; j++)
+            {
+                int j2 = round((FDOUBLE)(j+0)/padding_factor)+0;
+                ACCESS(avg, k2, i2, j2).real += ACCESS(data, k, i, j).real;
+                ACCESS(avg, k2, i2, j2).imag += ACCESS(data, k, i, j).imag;
+                ACCESS(down_weight, k2, i2, j2) += ACCESS(weight, k , i, j);
+            }
+        }
+    }
+    // Then enforce Hermitian symmetry in the downsampled arrays
+    // We already took the average.... so not completely correct, but does not really matter for FSC calculation anyway
+    // enforceHermitianSymmetry(avg, down_weight);
+    
+    // And enforce symmetry in the downsampled arrays
+    symmetrise(avg, down_weight, r2_max);
+    
+    // Calculate the straightforward average in the downsampled arrays
+    for (size_t n = 0; n < avg.dimzyx; n++)
+    {
+        if (ACCESS(down_weight, 0, 0, n) > 0.){
+            ACCESS(avg, 0, 0, n).real /= ACCESS(down_weight, 0, 0, n);
+            ACCESS(avg, 0, 0, n).imag /= ACCESS(down_weight, 0, 0, n);
+        }
+        else{
+            ACCESS(avg, 0, 0, n).real = ACCESS(avg, 0, 0, n).imag = 0.;
+        }
+    }
+    
+    down_weight.fini();
+}
+
+void MyBackProjector::calculateDownSampledFourierShellCorrelation(Vol<MKL_Complex > &avg1,
+                                                                  Vol<MKL_Complex > &avg2,
+                                                                  FDOUBLE* fsc)
+{
+    if (avg1.dimx!=avg2.dimx || avg1.dimy!=avg2.dimy || avg1.dimz!=avg2.dimz)
+        ERROR_REPORT("ERROR MyBackProjector::calculateDownSampledFourierShellCorrelation: two arrays have different sizes");
+    
+    std::vector<FDOUBLE> num(ori_size/2+1,0);
+    std::vector<FDOUBLE> den1(ori_size/2+1,0);
+    std::vector<FDOUBLE> den2(ori_size/2+1,0);
+    
+    int avg1_origin_z = XMIPP_ORIGIN(avg1.dimz);
+    int avg1_origin_y = XMIPP_ORIGIN(avg1.dimy);
+    for (int k = 0; k < avg1.dimz; k++){
+        for (int i = 0; i < avg1.dimy; i++){
+            int kp = k + avg1_origin_z;
+            int ip = i + avg1_origin_y;
+            for (int j = 0;j < avg1.dimx; j++)
+            {
+                int jp = j;
+                FDOUBLE R = sqrt(kp*kp + ip*ip + jp*jp);
+                if (R > r_max)
+                    continue;
+                int idx=round(R);
+                auto& z1=ACCESS(avg1, k, i, j);
+                auto& z2=ACCESS(avg2, k, i, j);
+                FDOUBLE absz1=sqrt(z1.real*z1.real+z1.imag*z1.imag);
+                FDOUBLE absz2=sqrt(z2.real*z2.real+z2.imag*z2.imag);
+                num[idx]  += z1.real*z2.real+z1.imag*z2.imag;//(conj(z1) * z2).real;
+                den1[idx] += absz1*absz1;
+                den2[idx] += absz2*absz2;
+            }
+    	}
+    }
+    
+    for (int i = 0; i < ori_Fsize; i++)
+    {
+        if (den1[i]*den2[i] > 0.)
+            fsc[i] = num[i]/sqrt(den1[i]*den2[i]);
+    }
+    // Always set zero-resolution shell to FSC=1
+    // Raimond Ravelli reported a problem with FSC=1 at res=0 on 13feb2013...
+    // (because of a suboptimal normalisation scheme, but anyway)
+    fsc[0] = 1.;
     
 }

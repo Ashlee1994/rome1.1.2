@@ -18,8 +18,17 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "mpi.h"
-#include <algorithm>
+
+#ifdef FAKEMPI
+namespace MPI {
+    Datatype DOUBLE,FLOAT,INT,BOOL;
+    Op SUM;
+	Intracomm COMM_WORLD;
+};
+#endif
 
 // Divides a number into most equally groups
 int divide_equally(int N, int size, int rank,int &first,int &last)
@@ -78,17 +87,17 @@ int divideIndex(int N,int nodes,int node,int &n_start,int &n_end){
 //	//create buffer for each node,it shoud be same size (larger enough size to keep total data).
 //	int sub_N = ceil((double)N/nodes);
 //	int sub_D = ceil((double)D/nodes);
-//	double *buffer = (double*)_mm_malloc(sizeof(double)*sub_N*sub_D,64);
+//	double *buffer = (double*)aMalloc(sizeof(double)*sub_N*sub_D,64);
 //	
 //	//create final transpose date,it may has different size in final node
 //	int my_d_interval,d_start,d_end;
 //	my_d_interval = divideIndex(D,nodes,node,d_start,d_end);
-//	//double *newMatbuffer = (double*)_mm_malloc(sizeof(double)*my_d_interval*N,64);
+//	//double *newMatbuffer = (double*)aMalloc(sizeof(double)*my_d_interval*N,64);
 //	//intilize some other
 //	int my_n_interval,n_start,n_end;
 //	my_n_interval = divideIndex(N,nodes,node,n_start,n_end);
-//	int *rcount = (int*)_mm_malloc(sizeof(int)*nodes,64);
-//	int *displs = (int*)_mm_malloc(sizeof(int)*nodes,64);
+//	int *rcount = (int*)aMalloc(sizeof(int)*nodes,64);
+//	int *displs = (int*)aMalloc(sizeof(int)*nodes,64);
 //
 //	//each node will get different piece of D
 //	for(int dist_node = 0;dist_node < nodes;dist_node++){
@@ -115,10 +124,10 @@ int divideIndex(int N,int nodes,int node,int &n_start,int &n_end){
 //		MPI::COMM_WORLD.Barrier();
 //	}
 //
-//	_mm_free(buffer);
-//	//_mm_free(newMatbuffer);
-//	_mm_free(rcount);
-//	_mm_free(displs);
+//	aFree(buffer);
+//	//aFree(newMatbuffer);
+//	aFree(rcount);
+//	aFree(displs);
 //}
 //
 //
@@ -128,17 +137,17 @@ int divideIndex(int N,int nodes,int node,int &n_start,int &n_end){
 //	//create buffer for each node,it shoud be same size (larger enough size to keep total data).
 //	int sub_N = ceil((double)N/nodes);
 //	int sub_D = ceil((double)D/nodes);
-//	float *buffer = (float*)_mm_malloc(sizeof(float)*sub_N*sub_D,64);
+//	float *buffer = (float*)aMalloc(sizeof(float)*sub_N*sub_D,64);
 //	
 //	//create final transpose date,it may has different size in final node
 //	int my_d_interval,d_start,d_end;
 //	my_d_interval = divideIndex(D,nodes,node,d_start,d_end);
-//	//double *newMatbuffer = (double*)_mm_malloc(sizeof(double)*my_d_interval*N,64);
+//	//double *newMatbuffer = (double*)aMalloc(sizeof(double)*my_d_interval*N,64);
 //	//intilize some other
 //	int my_n_interval,n_start,n_end;
 //	my_n_interval = divideIndex(N,nodes,node,n_start,n_end);
-//	int *rcount = (int*)_mm_malloc(sizeof(int)*nodes,64);
-//	int *displs = (int*)_mm_malloc(sizeof(int)*nodes,64);
+//	int *rcount = (int*)aMalloc(sizeof(int)*nodes,64);
+//	int *displs = (int*)aMalloc(sizeof(int)*nodes,64);
 //
 //	//each node will get different piece of D
 //	for(int dist_node = 0;dist_node < nodes;dist_node++){
@@ -191,10 +200,10 @@ int divideIndex(int N,int nodes,int node,int &n_start,int &n_end){
 //		MPI::COMM_WORLD.Barrier();
 //	}
 //
-//	_mm_free(buffer);
-//	//_mm_free(newMatbuffer);
-//	_mm_free(rcount);
-//	_mm_free(displs);
+//	aFree(buffer);
+//	//aFree(newMatbuffer);
+//	aFree(rcount);
+//	aFree(displs);
 //}
 //
 ///**** it will tranpose matrix(N*D) between cluster,Mat is (N/nodes)xD cross each node,new Mat is N*(D/nodes) ****/
@@ -227,8 +236,8 @@ int divideIndex(int N,int nodes,int node,int &n_start,int &n_end){
 ///**** gather specific rows of Mat(NxD) from each node,the rowIndex store the specific row index and 
 //Mat size is (N/nodes)xD in each node ,the newMat size is number_of_rowxD ****/
 //void gaterOneMatCluster(float* Mat,float *newMat,int N,int D,int *rowIndex,int rowIndexLength,int dist_node,int node,int nodes){
-//	int *rcount = (int*)_mm_malloc(sizeof(int)*nodes,64);
-//	int *displs = (int*)_mm_malloc(sizeof(int)*nodes,64);
+//	int *rcount = (int*)aMalloc(sizeof(int)*nodes,64);
+//	int *displs = (int*)aMalloc(sizeof(int)*nodes,64);
 //
 //	int count,bufferSize;
 //	int my_n_interval,n_start,n_end;
@@ -239,7 +248,7 @@ int divideIndex(int N,int nodes,int node,int &n_start,int &n_end){
 //	for(int i = 0;i < rowIndexLength;i++)
 //		if(n_start <= rowIndex[i] && rowIndex[i] < n_end) bufferSize++;
 //
-//	float *buffer = (float*)_mm_malloc(sizeof(float)*bufferSize*D,64);
+//	float *buffer = (float*)aMalloc(sizeof(float)*bufferSize*D,64);
 //	//std::cout<<"node = "<<node<<",bufferSize = "<<bufferSize<<" "<<n_start<<" "<<n_end<<std::endl;
 //	//copy the data to buffer
 //	count = 0;
@@ -260,9 +269,9 @@ int divideIndex(int N,int nodes,int node,int &n_start,int &n_end){
 //	MPI::COMM_WORLD.Gatherv(buffer,bufferSize*D,MPI::FLOAT,newMat,rcount,displs,MPI::FLOAT,dist_node);
 //	MPI::COMM_WORLD.Barrier();
 //
-//	_mm_free(rcount);
-//	_mm_free(displs);
-//	_mm_free(buffer);
+//	aFree(rcount);
+//	aFree(displs);
+//	aFree(buffer);
 //}
 //
 //

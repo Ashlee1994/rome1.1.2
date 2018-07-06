@@ -23,35 +23,14 @@
 
 #include "./util.h"
 
-#include <omp.h>
-#include <map>
-#include <iostream>
 
 
 // Slow inaccurate timing
 
 
-#ifdef _WIN32
-	#include <Windows.h>
-    #include <time.h>
-	#undef GROUP_NAME
-    int gettimeofday(struct timeval *tp, void *tzp);
-#elif __MACH__
-    #include <sys/time.h>
-    #define CLOCK_REALTIME 0
-    #define CLOCK_MONOTONIC 0
-    // clock_gettime is not implemented on OSX,accuracy is 1 microsecond
-    int clock_gettime(int /*clk_id*/, struct timespec* t);
-#else
-    #include <time.h>
-    #include <unistd.h>
-    #include <sys/time.h>
-#endif
-
 void sleepInSecs(unsigned int seconds);
 double dtime();
 
-typedef double Microseconds;
 Microseconds timeInMicroseconds();
 
 struct TimePoint {

@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Bevin R Brett(bevin_brett@hotmail.com)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,41 +19,19 @@
  * This complete copyright notice must be included in any revised version of the
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
+ 
  ***************************************************************************/
 
-#pragma once
+#ifndef TIME_H_
+#define TIME_H_
 
 #include "./util.h"
 
-#include <omp.h>
-#include <map>
-#include <iostream>
-
-
 // Slow inaccurate timing
-
-
-#ifdef _WIN32
-	#include <Windows.h>
-    #include <time.h>
-	#undef GROUP_NAME
-    int gettimeofday(struct timeval *tp, void *tzp);
-#elif __MACH__
-    #include <sys/time.h>
-    #define CLOCK_REALTIME 0
-    #define CLOCK_MONOTONIC 0
-    // clock_gettime is not implemented on OSX,accuracy is 1 microsecond
-    int clock_gettime(int /*clk_id*/, struct timespec* t);
-#else
-    #include <time.h>
-    #include <unistd.h>
-    #include <sys/time.h>
-#endif
 
 void sleepInSecs(unsigned int seconds);
 double dtime();
 
-typedef double Microseconds;
 Microseconds timeInMicroseconds();
 
 struct TimePoint {
@@ -100,7 +81,6 @@ std::cout<<std::setw(6)<<" "<<timePoints[i].line<<" ---> "<<timePoints[i+1].line
 
 // Fast precise timing
 
-
 class AccurateTimer {
 public:
 #ifdef _WIN32
@@ -140,97 +120,4 @@ private:
 #endif
 };
 
-// #define TUNING
-
-#if !defined(TUNING)
-	class Tuning_Scope_Para { 
-	public:
-		static const bool tuning = false;
-		const bool doing;
-		const char* const name;
-		const int line;
-		const int iter;
-		const int tripCount;
-		double startTime;
-		Tuning_Scope_Para(const char* name, int line, int iter, long int tripCount) 
-		  : doing(Tuning_Scope_Para::tuning && omp_get_thread_num()==0), 
-			name(name), line(line), iter(iter), tripCount(tripCount) 
-		{ 
-			if (doing) init(); 
-		}
-		~Tuning_Scope_Para() {
-			if (doing) fini();
-		}
-	private:
-		void init();
-		void fini();
-	};
-	#define TUNING_FLUSH
-	#define TUNING_SCOPE_STEP(NAME)
-	#define TUNING_SCOPE_STEP_BEGIN(NAME)
-	#define TUNING_SCOPE_STEP_END
-	#define TUNING_SCOPE_PARA_BEGIN(NAME,TRIPCOUNT)		//	Tuning_Scope_Para tuning_Scope_Para_##NAME(#NAME,__LINE__,iter,TRIPCOUNT);
-	#define TUNING_SCOPE_PARA_END
-	#define TUNING_SCOPE_ITER_BEGIN(NAME)
-	#define TUNING_SCOPE_ITER_END
-#else
-	#define TUNING_FLUSH					Tuning::flush(); 
-    #define TUNING_SCOPE_STR(NAME) #NAME
-    #define TUNING_SCOPE_FUNCETC(NAME,SUFFIX) TUNING_SCOPE_STR(NAME##_##SUFFIX)
-	#define TUNING_SCOPE_STEP(NAME)          Tuning::ScopeStep NAME##_tuningScopeStep(__FILE__, __LINE__, TUNING_SCOPE_STR(NAME));
-	#define TUNING_SCOPE_STEP_BEGIN(NAME)   {Tuning::ScopeStep NAME##_tuningScopeStep(__FILE__, __LINE__, TUNING_SCOPE_STR(NAME));
-	#define TUNING_SCOPE_STEP_END }
-	#define TUNING_SCOPE_PARA_BEGIN(NAME,TRIPCOUNT)   {Tuning::ScopeParallel NAME##_tuningScopeParallel(NAME##_tuningScopeStep, __FILE__, __LINE__, TUNING_SCOPE_FUNCETC(NAME,para));
-	#define TUNING_SCOPE_PARA_END			}
-	#define TUNING_SCOPE_ITER_BEGIN(NAME)   {Tuning::ScopeForBody  NAME##_tuningScopeForBody(NAME##_tuningScopeParallel, __FILE__, __LINE__, TUNING_SCOPE_FUNCETC(NAME,iter));
-	#define TUNING_SCOPE_ITER_END           }
-	namespace Tuning {
-		void flush();
-		void setFTraceFilename(const char* name);
-		class ScopeBase {
-		public:
-			const bool tracing;
-			const char* const file; const int line;
-			ScopeBase(const char* file, int line, const char* funcEtc);
-			~ScopeBase();
-			struct FTraceLine;
-		protected:
-			FTraceLine* BorE(bool makeB, const char* file, int line, const char* funcEtc);
-			FTraceLine* ftraceLineB;
-		};
-		class ScopeStep : public ScopeBase {
-		public:
-			ScopeStep(const char* file, int line, const char* funcEtc);
-			~ScopeStep();
-		};
-		class ScopeParallel : public ScopeBase {
-		public:
-			ScopeParallel(ScopeStep& scopeStep, const char* file, int line, const char* funcEtc);
-			~ScopeParallel();
-			void iteration(FTraceLine* b, FTraceLine* e);
-		private:
-			struct Iteration {
-				FTraceLine* b;
-				FTraceLine* e;
-				Iteration() : b(NULL), e(NULL) {}
-			};
-			static const size_t iterationsCapacity = 10;
-			omp_lock_t lock;
-			struct IterationsRingBuffer {
-				Iteration v[iterationsCapacity];
-				size_t initialIterationCount;
-				size_t iterationsHead, iterationsTail;
-				IterationsRingBuffer() : initialIterationCount(0), iterationsTail(0), iterationsHead(1) {}
-				void iteration(FTraceLine* b, FTraceLine* e);
-			};
-			std::map<int,IterationsRingBuffer*> threadToIterationsRingBuffer;
-		};																						// end of macro
-		class ScopeForBody : public ScopeBase {
-			ScopeParallel& scopeParallel;
-		public:
-			ScopeForBody(ScopeParallel& scopeParallel, const char* file, int line, const char* funcEtc);
-			~ScopeForBody();
-		};																						// end of macro
-	}
 #endif
-

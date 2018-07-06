@@ -1,2 +1,10 @@
-dataset/
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
 
+/testdata_3d/1xck/refine
+gitbackup/
+Windows/
+testdata_2d/
+testdata_3d/
+Makefile_NoMPI_NoOffload

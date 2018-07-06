@@ -18,17 +18,30 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "string.h"
 #include <algorithm>
 
 std::string pathRemoveSuffix(std::string path)
 {
+    /** 
     auto pos = path.find_last_of(".");
-    if (path[pos+1] != '/')
-        return path.substr(0,path.find_last_of("."));
+    // only work if path is a filename!
+    if ((path.substr(pos)).find("/")==std::string::npos)
+        return path.substr(0,pos);
     else
         return path;
-    
+     **/
+    int pos = -1;
+    if (path.find(".star") != std::string::npos) pos = path.find(".star");
+    else if (path.find(".mrcs") != std::string::npos) pos = path.find(".mrcs");
+    else if (path.find(".dat") != std::string::npos) pos = path.find(".dat");
+    else if (path.find(".mrc") != std::string::npos) pos = path.find(".mrc");
+    if (pos != -1)
+        return path.substr(0,pos);
+    else
+        return path;
 }
 
 std::string pathGetFilename(std::string path)

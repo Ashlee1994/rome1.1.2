@@ -1,4 +1,4 @@
- /***************************************************************************
+/***************************************************************************
  *
  * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
@@ -24,6 +24,19 @@
 #include "../src/option.h"
 #include "../src/map2d_optimizer.h"
 
+void MLProgram() {
+    
+    Map2dOptimizer::setupMap2dOptimizer();
+    Map2dOptimizer::readImages();
+    Map2dOptimizer::prepare();
+    Map2dOptimizer::iterate();
+    Map2dOptimizer::writeClassesAndMetadata();
+    Map2dOptimizer::destroyMap2dOptimizer();
+    
+}
+
+#include "../src/map2d_optimizer_old.h"
+
 int main(int argc, char * argv[]) {
     
     //---------- read input parameters  ----------//
@@ -32,15 +45,12 @@ int main(int argc, char * argv[]) {
     // general option
     option.addOption("-i"					,"Input metadata file with images needed to align"                               	);
     option.addOption("-o"					,"Output metadata"                                                               	);
-    option.addOption("-map2d_K"				,"Number of classes needed to classify based on maximum likelihood method!!!!! please use -map2d_K instead of -ml2d_k !!!!!");
-    option.addOption("-sml_K"				,"Number of classes needed to classify based on GTM!!!!! please use -sml_K instead of -gtm_k !!!!!");
+    option.addOption("-map2d_K"				,"Number of classes needed to classify based on maximum likelihood method!!!!! please use Uppercase —map2d_K instead of lowercase -map2d_k !!!!!");
+    option.addOption("-sml_K"				,"Number of classes needed to classify based on GTM!!!!! please use Uppercase —sml_K instead of lowercase -gtm_k !!!!!");
     option.addOption("-map2d_iter"			,"Maximum number of iterations to perform based on maximum likelihood method"    	);
     option.addOption("-sml_iter"			,"Maximum number of iterations to perform based on GTM"                          	);
-    option.addOption("-angpix"				,"Pixel size (in Angstroms)"                                                  	 	);
+    option.addOption("-angpix"				,"Pixel size (in Angstroms)!!!!! please use -angpix instead of -pixel !!!!!" 		);
     // advanced option
-    option.addOption("-tau2_fudge",         "Regularisation parameter (values higher than 1 give more weight to the data,2 for 2D)","1");
-    option.addOption("-oversampling",       "Adaptive oversampling order to speed-up calculations (0=no oversampling, 1=2x, 2=4x, etc)","1");
-    option.addOption("-particle_diameter",  "Particle_diameter",                                                        "-1"    );
     option.addOption("-dimension"			,"GTM sampling grid dimension(Default 1)"									,"1"  	);
     option.addOption("-pca"					,"Using PCA to initialize,(Defalut is using Gauss-Circle template)"			,"0"  	);
     // option.addOption("-continue"			,"continue work from specified iter.(remember to change -i input star)"		,"0"	);
@@ -58,13 +68,13 @@ int main(int argc, char * argv[]) {
     option.addOption("-intact_ctf_first_peak","Ignore CTFs until their first peak?"										,"0"	);
     option.addOption("-zero_mask",          "Mask surrounding background in particles to zero (by default the solvent area is filled with random noise)", "0" );
     option.addOption("-flatten_solvent",    "Perform masking on the references as well",                                                                  "0" );
-
+    
     if (argc < 3) {
         option.printHelp();
         std::cerr << "example : " << std::endl;
         std::cerr << "../bin/rome_deep2d -i class19.star -o class19_deep2d -map2d_K 10 -sml_K 10 -map2d_iter 20 -sml_iter 30 -angpix 1.74 -ctf -norm > deep2d_output.txt" << std::endl;
         std::cerr << std::endl;
-        exit(1);
+        EXIT_ABNORMALLY;
     }
     
     option.readCommandLine(argc, argv);
@@ -80,54 +90,49 @@ int main(int argc, char * argv[]) {
 #endif
 
     // input file
-    std::string star_fn 			   	=	pathRemoveSuffix(option.getStrOption("-i"))+".star";
-    Map2dOptimizer::star_fn           	=   star_fn;
-    Map2dOptimizer::mrcs_dir          	=   pathGetDir(star_fn);
+    std::string star_fn 			      	=	pathRemoveSuffix(option.getStrOption("-i"))+".star";
+    Map2dOptimizer_old::star_fn           	=   star_fn;
+    Map2dOptimizer_old::mrcs_dir          	=   pathGetDir(star_fn);
     // output file
-    std::string fn                  	=   pathRemoveSuffix(option.getStrOption("-o"))+"_map2d";
-    Map2dOptimizer::write_fn          	=   pathGetFilename(fn);
-    Map2dOptimizer::write_path        	=   pathGetDir(fn);
+    std::string fn                  	  	=   pathRemoveSuffix(option.getStrOption("-o"));
+    Map2dOptimizer_old::write_fn          	=   pathGetFilename(fn);
+    Map2dOptimizer_old::write_path        	=   pathGetDir(fn);
     // basic
-    Map2dOptimizer::nr_classes        	=   option.getIntOption("-map2d_K");
-    Map2dOptimizer::nr_pool           	=   option.getIntOption("-pool");
-    Map2dOptimizer::pixel_size        	=   option.getFloatOption("-angpix");
-    Map2dOptimizer::nr_iter           	=   option.getIntOption("-map2d_iter");
-    Map2dOptimizer::random_seed       	=   option.getIntOption("-random_seed");
-    Map2dOptimizer::offset_step       	=   option.getIntOption("-offset_step");
-    Map2dOptimizer::offset_range		=   option.getIntOption("-offset_range");
-    Map2dOptimizer::psi_step          	=   option.getIntOption("-psi_step");
-    Map2dOptimizer::tau2_fudge_factor   =   option.getFloatOption("-tau2_fudge");
-    Map2dOptimizer::particle_diameter   =   option.getFloatOption("-particle_diameter");
-    Map2dOptimizer::adaptive_oversampling=  option.getIntOption("-oversampling");
+    Map2dOptimizer_old::nr_classes        	=   option.getIntOption("-map2d_K");
+    Map2dOptimizer_old::nr_pool           	=   option.getIntOption("-pool");
+    Map2dOptimizer_old::pixel_size        	=   option.getFloatOption("-angpix");
+    Map2dOptimizer_old::nr_iter           	=   option.getIntOption("-map2d_iter");
+    Map2dOptimizer_old::random_seed       	=   option.getIntOption("-random_seed");
+    Map2dOptimizer_old::offset_step       	=   option.getIntOption("-offset_step");
+    Map2dOptimizer_old::offset_range		=   option.getIntOption("-offset_range");
+    Map2dOptimizer_old::psi_step          	=   option.getIntOption("-psi_step");
     //
-    Map2dOptimizer::do_ctf_correction 	=   option.getBoolOption("-ctf");
-    Map2dOptimizer::only_flip_phases	=	option.getBoolOption("-only_flip_phases");
-    Map2dOptimizer::ctf_phase_flipped	=	option.getBoolOption("-ctf_phase_flipped");
-    Map2dOptimizer::refs_are_ctf_corrected= option.getBoolOption("-ctf_corrected_ref");
-    Map2dOptimizer::intact_ctf_first_peak=	option.getBoolOption("-intact_ctf_first_peak");
-    Map2dOptimizer::do_norm_correction	=   option.getBoolOption("-norm");
-    Map2dOptimizer::do_zero_mask	  	=	option.getBoolOption("-zero_mask");
-    Map2dOptimizer::do_solvent			=	option.getBoolOption("-flatten_solvent");
+    Map2dOptimizer_old::do_ctf_correction 	=   option.getBoolOption("-ctf");
+    Map2dOptimizer_old::only_flip_phases	=	option.getBoolOption("-only_flip_phases");
+    Map2dOptimizer_old::ctf_phase_flipped	=	option.getBoolOption("-ctf_phase_flipped");
+    Map2dOptimizer_old::refs_are_ctf_corrected= option.getBoolOption("-ctf_corrected_ref");
+    Map2dOptimizer_old::intact_ctf_first_peak=	option.getBoolOption("-intact_ctf_first_peak");
+    Map2dOptimizer_old::do_norm_correction	=   option.getBoolOption("-norm");
+    Map2dOptimizer_old::do_zero_mask	  	=	option.getBoolOption("-zero_mask");
+    Map2dOptimizer_old::do_solvent			=	option.getBoolOption("-flatten_solvent");
     // others
-    Map2dOptimizer::iter              	=   0;//option.getIntOption("-continue");
-    Map2dOptimizer::guidance_fn       	=   "NULL";//option.getStrOption("-testguidance");
-    Map2dOptimizer::ref_fn            	=	"NULL";
+    Map2dOptimizer_old::iter              	=   0;//option.getIntOption("-continue");
+    Map2dOptimizer_old::guidance_fn       	=   "NULL";//option.getStrOption("-testguidance");
+    Map2dOptimizer_old::ref_fn            	=	"NULL";
     
     double t1 = dtime();
     
-    Map2dOptimizer::setupMap2dOptimizer();
+    Map2dOptimizer_old::setupMap2dOptimizer();
     
-    Map2dOptimizer::readImages();
-
-    Map2dOptimizer::prepare();
+    Map2dOptimizer_old::prepare();
     
-    Map2dOptimizer::iterate();
+    Map2dOptimizer_old::iterate();
     
-    Map2dOptimizer::destroyMap2dOptimizer();
+    Map2dOptimizer_old::destroyMap2dOptimizer();
     
     double t2 = dtime();
     
-    if(Map2dOptimizer::node == 0)
+    if(Map2dOptimizer_old::node == 0)
         std::cout<<"ML2D costs : "<<(t2-t1)<<std::endl;
     
 #ifdef USEMPI
@@ -137,7 +142,7 @@ int main(int argc, char * argv[]) {
     //--------- GTM main program  ------------//
     
     int set_sampling_dim            = option.getIntOption("-dimension");
-    if (set_sampling_dim > 3 || set_sampling_dim < 1) {std::cerr<<"Wrong sampling dimension."<<std::endl;exit(0);}
+    if (set_sampling_dim > 3 || set_sampling_dim < 1) {std::cerr<<"Wrong sampling dimension."<<std::endl;EXIT_ABNORMALLY;}
     
     double set_precision            = 10e-12;//option.getFloatOption("-precision");
     double set_alpha                = 0.01;//option.getIntOption("-updateAlpha");
@@ -160,13 +165,13 @@ int main(int argc, char * argv[]) {
     switch (set_sampling_dim) {
         case 1:
             K_info = split(option.getStrOption("-sml_K"),',');
-            if (K_info.size() != 1) {std::cerr<<"Wrong for input -sml_K"<<std::endl;exit(1);}
+            if (K_info.size() != 1) {std::cerr<<"Wrong for input -sml_K"<<std::endl;EXIT_ABNORMALLY;}
             X_infos[0]=1;X_infos[1]=K_info[0];X_infos[2]=K_info[0];
             M=X_infos[2]*0.8;Mu_infos[0]=1.*(double)M/(M-1);Mu_infos[1]=X_infos[2]*(double)M/(M-1);Mu_infos[2]=M;
             break;
         case 2:
             K_info = split(option.getStrOption("-sml_K"),',');
-            if (K_info.size() != 2) {std::cerr<<"Wrong for input -sml_K"<<std::endl;exit(1);}
+            if (K_info.size() != 2) {std::cerr<<"Wrong for input -sml_K"<<std::endl;EXIT_ABNORMALLY;}
             X_infos[0]=1;X_infos[1]=K_info[0];X_infos[2]=K_info[0];
             X_infos[3]=1;X_infos[4]=K_info[1];X_infos[5]=K_info[1];
             M=X_infos[2]*0.8;Mu_infos[0]=1.*(double)M/(M-1);Mu_infos[1]=X_infos[2]*(double)M/(M-1);Mu_infos[2]=M;
@@ -174,7 +179,7 @@ int main(int argc, char * argv[]) {
             break;
         case 3:
             K_info = split(option.getStrOption("-sml_K"),',');
-            if (K_info.size() != 3) {std::cerr<<"Wrong for input -sml_K"<<std::endl;exit(1);}
+            if (K_info.size() != 3) {std::cerr<<"Wrong for input -sml_K"<<std::endl;EXIT_ABNORMALLY;}
             X_infos[0]=1;X_infos[1]=K_info[0];X_infos[2]=K_info[0];
             X_infos[3]=1;X_infos[4]=K_info[1];X_infos[5]=K_info[1];
             X_infos[6]=1;X_infos[7]=K_info[2];X_infos[8]=K_info[2];

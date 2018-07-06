@@ -21,12 +21,7 @@
 #ifndef _OPTION_H_
 #define _OPTION_H_
 
-#include <iostream>
-#include <string>
-#include <map>
-#include <iomanip>
-#include <vector>
-#include <algorithm>
+#include "./util.h"
 
 #include "error.h"
 #include "string.h"
@@ -43,17 +38,18 @@ private:
     } Elem;
     std::vector<Elem> AllOptions;
     //
-    int keyLength,commentLength;
+    size_t maxKeyLength,maxCommentLength;
     
 public:
-    Option(){keyLength = 0;commentLength = 0;}
-    ~Option(){IOParser.clear();AllOptions.clear();}
+	Option() : maxKeyLength(0), maxCommentLength(0) {}
+    ~Option() { IOParser.clear(); AllOptions.clear(); }
     
     // add all options
 	static std::string unspecified() { return "<unspecified>"; }
     void addOption(std::string key,std::string commit,std::string default_value = unspecified());
     // read command line
     void readCommandLine(int argc, char * argv[]);
+	void readIncludeFile(std::string fnm);
     
     // read option
     std::string getOption(std::string key);
@@ -66,6 +62,8 @@ public:
     void printValue();
     //
     void printHelp();
+private:
+	int readArg(const char* arg0, const char* arg1);
 };
 
 #endif

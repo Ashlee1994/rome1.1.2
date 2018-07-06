@@ -18,18 +18,11 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "time.h"
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <omp.h>
-#include <algorithm>
-#include <vector>
 
 #ifdef _WIN32
-
-#include <windows.h>
-#include <time.h>
 
 	static int gettimeofday(struct timeval *tp, void *tzp)
 	{
@@ -52,9 +45,6 @@
 
 	void sleepInSecs(unsigned int seconds) { Sleep(DWORD(seconds)*1000); } 
 #else
-	#include <time.h>
-    #include <unistd.h>
-    #include <sys/time.h>
 	void sleepInSecs(unsigned int seconds) { sleep(seconds); } 
 #endif
 
@@ -85,8 +75,8 @@ double dtime(){
 // The constructor is not called on OXS if define here
 // static AccurateTimer microsecondsTimer;
 
+static AccurateTimer microsecondsTimer;
 Microseconds timeInMicroseconds() {
-    static AccurateTimer microsecondsTimer;
 	return double(microsecondsTimer.sinceInited()) / microsecondsTimer.countPerMicrosecond();
 }
 

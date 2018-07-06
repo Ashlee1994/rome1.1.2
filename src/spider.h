@@ -21,24 +21,13 @@
 #ifndef SPIDER_H_
 #define SPIDER_H_
 
-// ntohl(),for swaping binary data order
-#ifdef _WIN32
-// in vs,add Ws2_32.lib in project->configurations Properties->linker->input->additional dependencies
-#pragma comment(lib, "Ws2_32.lib")
-#include<Winsock2.h>
-#else
-#include <arpa/inet.h>
-#endif
+#include "./util.h"
 
-#include <stdio.h>
-#include <iostream>
-#include <string>
-#include <cstring>
-#include "mkl.h"
 #include "fftw/fftw3.h"
 
 #include "mrcs.h"
 #include "error.h"
+#include "spider_old.h"
 
 namespace Spider{
     // spider *.dat header,from : http://spider.wadsworth.org/spider_doc/spider/docs/image_doc.html

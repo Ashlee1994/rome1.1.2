@@ -23,9 +23,9 @@
 
 #pragma once
 
-#include "../mpi.h"
-#include "../mrcs.h"
-#include "../time.h"
+#include "mpi.h"
+#include "mrcs.h"
+#include "time.h"
 
 #include "res_fft.h"
 #include "res_filter.h"

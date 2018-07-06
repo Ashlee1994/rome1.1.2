@@ -42,6 +42,8 @@
  *  e-mail address 'xmipp@cnb.csic.es'
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "ctf.h"
 
 /* Read -------------------------------------------------------------------- */

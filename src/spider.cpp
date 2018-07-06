@@ -17,7 +17,7 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
-
+#include "util.h"		// used for building precompiled headers on Windows
 
 #include "spider.h"
 
@@ -148,7 +148,7 @@ namespace Spider{
             ERROR_REPORT("Fail to open "+filename);
         
         // Write head first
-        // float* headBuffer = (float*)_mm_malloc(datHead.labbyt,64);
+        // float* headBuffer = (float*)aMalloc(datHead.labbyt,64);
         // memset(headBuffer, 0, datHead.labbyt);
         std::vector<float> headBuffer(datHead.labbyt);
         for(auto& v : headBuffer) v = 0.;
@@ -288,7 +288,6 @@ namespace Spider{
                 data[j*nx+i] = B[j*n2x+i];
             }
         }
-        
     }
     
     void applyFilter(FloatImages& fLoatImages,double filter){
@@ -296,16 +295,16 @@ namespace Spider{
         int numberOfImage = fLoatImages.nr_images();
         int image2size = 2*imageSize;
         // some temporary data
-        float *image_data_tmp = (float*)_mm_malloc(sizeof(float)*image2size*image2size,64);
-        fftwf_complex* image_Fdata_tmp = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex)*image2size*(image2size/2+1));
+        float*         image_data_tmp  = (float*        )aMalloc(sizeof(float        )*image2size*image2size      ,64);
+        fftwf_complex* image_Fdata_tmp = (fftwf_complex*)aMalloc(sizeof(fftwf_complex)*image2size*(image2size/2+1),64);
         
         for (int iimage = 0; iimage < numberOfImage; iimage++) {
             FQ_Q(fLoatImages.image_ptr(iimage),image_data_tmp,imageSize,imageSize,image_Fdata_tmp,filter);
         }
         
         // free temporary data
-        _mm_free(image_data_tmp);
-        fftwf_free(image_Fdata_tmp);
+        aFree(image_data_tmp);
+        aFree(image_Fdata_tmp);
     }
     
     float FBS2(float x,float y,int nx,int ny,const float* data,const float* X1,const float* Y1,const float* XY2)
@@ -382,15 +381,15 @@ namespace Spider{
         
         fftwf_plan forward_plan,backward_plan;
         
-        float *data2 = (float*)_mm_malloc(sizeof(float)*ny*nx,64);
+        float *data2 = (float*)aMalloc(sizeof(float)*ny*nx,64);
         memcpy(data2, data, sizeof(float)*ny*nx);
-        fftwf_complex* Fdata = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex)*ny*(nx/2+1));
-        fftwf_complex* Ftemp = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex)*ny*(nx/2+1));
-        float *WX = (float*)_mm_malloc(sizeof(float)*(nx/2+1),64);
-        float *WY = (float*)_mm_malloc(sizeof(float)*ny,64);
-        float *X1 = (float*)_mm_malloc(sizeof(float)*ny*nx,64);
-        float *Y1 = (float*)_mm_malloc(sizeof(float)*ny*nx,64);
-        float *XY2 = (float*)_mm_malloc(sizeof(float)*ny*nx,64);
+        fftwf_complex* Fdata = (fftwf_complex*) aMalloc(sizeof(fftwf_complex)*ny*(nx/2+1), 64);
+        fftwf_complex* Ftemp = (fftwf_complex*) aMalloc(sizeof(fftwf_complex)*ny*(nx/2+1), 64);
+        float *WX  = (float*)aMalloc(sizeof(float)*(nx/2+1),64);
+        float *WY  = (float*)aMalloc(sizeof(float)*ny,      64);
+        float *X1  = (float*)aMalloc(sizeof(float)*ny*nx,   64);
+        float *Y1  = (float*)aMalloc(sizeof(float)*ny*nx,   64);
+        float *XY2 = (float*)aMalloc(sizeof(float)*ny*nx,   64);
         
         forward_plan = fftwf_plan_dft_r2c_2d(ny,nx,data2,Fdata,FFTW_ESTIMATE);
         fftwf_execute(forward_plan);
@@ -535,14 +534,14 @@ namespace Spider{
             }
         }
         
-        fftwf_free(Fdata);
-        fftwf_free(Ftemp);
-        _mm_free(data2);
-        _mm_free(WX);
-        _mm_free(WY);
-        _mm_free(X1);
-        _mm_free(Y1);
-        _mm_free(XY2);
+        aFree(Fdata);
+        aFree(Ftemp);
+        aFree(data2);
+        aFree(WX);
+        aFree(WY);
+        aFree(X1);
+        aFree(Y1);
+        aFree(XY2);
     }
     
     void UnitTest(std::string fn_mrcs){
@@ -583,90 +582,90 @@ namespace Spider{
     }
     
     void UnitTest2(std::string fn_mrcs){
-        // std::cout<<"testing image operation-----------------------------------"<<std::endl;
-        // std::cout<<"reading the image data from mrcs file.--------------------"<<std::endl;
-        // Mrcs::MrcsHead mrcsHead;
-        // Mrcs::readMrcsHead(fn_mrcs, mrcsHead);
-        // int N = mrcsHead.NS;
-        // int size = mrcsHead.NC;
-        // Mrcs::MrcsImages listOfImages_original(size, N);
-        // Mrcs::readMrcsData(fn_mrcs, mrcsHead, listOfImages_original);
-        // std::cout<<"create two copy of image data,the new and old one,for running new and old version of code.-----"<<std::endl;
-        // DatImages listOfImages_old(size, N);
-        // DatImages listOfImages_new(size, N);
-        // std::cout<<"testing apply fliter-------------------------"<<std::endl;
-        // for (int i = 1; i < 10; i++) {
-        //     double fliter = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/5));
-        //     std::cout<<fliter<<std::endl;
-        //     // the new version of code
-        //     memcpy(listOfImages_new.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
-        //     applyFilter(listOfImages_new, fliter);
-        //     // the old version
-        //     memcpy(listOfImages_old.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
-        //     for (int iimage = 0; iimage < N; iimage++) {
-        //         // need to change the data type from float to double then test
-        //         spider_fq_q(listOfImages_old.image_ptr(iimage), size, size, fliter);
-        //     }
-        //     // compare the result
-        //     auto* image_data_new = listOfImages_new.image_ptr(0);
-        //     auto* image_data_old = listOfImages_old.image_ptr(0);
-        //     for (int i = 0; i < N*size*size; i++) {
-        //         if (image_data_new[i] != image_data_old[i]) {
-        //             std::cout<<"wrong.apply fliter...."<<std::endl;
-        //             exit(1);
-        //         }
-        //     }
-        // }
-        // std::cout<<"apply flite 0.05 to see what happen.....-----------"<<std::endl;
-        // memcpy(listOfImages_new.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
-        // applyFilter(listOfImages_new, 0.05);
-        // Mrcs::writeMrcsData(fn_mrcs+"_fliter", listOfImages_new);
-        // std::cout<<"testing done..... for apply fliter----------------"<<std::endl;
+        std::cout<<"testing image operation-----------------------------------"<<std::endl;
+        std::cout<<"reading the image data from mrcs file.--------------------"<<std::endl;
+        Mrcs::MrcsHead mrcsHead;
+        Mrcs::readMrcsHead(fn_mrcs, mrcsHead);
+        int N = mrcsHead.NS;
+        int size = mrcsHead.NC;
+        Mrcs::MrcsImages listOfImages_original(size, N);
+        Mrcs::readMrcsData(fn_mrcs, mrcsHead, listOfImages_original);
+        std::cout<<"create two copy of image data,the new and old one,for running new and old version of code.-----"<<std::endl;
+        DatImages listOfImages_old(size, N);
+        DatImages listOfImages_new(size, N);
+        std::cout<<"testing apply fliter-------------------------"<<std::endl;
+        for (int i = 1; i < 10; i++) {
+            double fliter = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/5));
+            std::cout<<fliter<<std::endl;
+            // the new version of code
+            memcpy(listOfImages_new.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
+            applyFilter(listOfImages_new, fliter);
+            // the old version
+            memcpy(listOfImages_old.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
+            for (int iimage = 0; iimage < N; iimage++) {
+                // need to change the data type from float to double then test
+                spider_fq_q(listOfImages_old.image_ptr(iimage), size, size, fliter);
+            }
+            // compare the result
+            auto* image_data_new = listOfImages_new.image_ptr(0);
+            auto* image_data_old = listOfImages_old.image_ptr(0);
+            for (int i = 0; i < N*size*size; i++) {
+                if (image_data_new[i] != image_data_old[i]) {
+                    std::cout<<"wrong.apply fliter...."<<std::endl;
+					EXIT_ABNORMALLY;
+                }
+            }
+        }
+        std::cout<<"apply flite 0.05 to see what happen.....-----------"<<std::endl;
+        memcpy(listOfImages_new.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
+        applyFilter(listOfImages_new, 0.05);
+        Mrcs::writeMrcsData(fn_mrcs+"_fliter", listOfImages_new);
+        std::cout<<"testing done..... for apply fliter----------------"<<std::endl;
         
-        // std::cout<<"testing rotation and shift the image----------------"<<std::endl;
-        // // temp data
-        // float* new_image_in = (float*)_mm_malloc(sizeof(float)*size*size,64);
-        // float* new_image_out = (float*)_mm_malloc(sizeof(float)*size*size,64);
-        // float* old_image_in = (float*)_mm_malloc(sizeof(float)*size*size,64);
-        // float* old_image_out = (float*)_mm_malloc(sizeof(float)*size*size,64);
-        // for (int i = 0; i < 10; i++) {
-        //     memcpy(listOfImages_new.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
-        //     memcpy(listOfImages_old.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
-        //     for (int iimage = 0; iimage < N; iimage++) {
-        //         double rotation = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
-        //         double shiftx = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
-        //         double shifty = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
-        //         std::cout<<rotation<<" "<<shiftx<<" "<<shifty<<std::endl;
-        //         // new
-        //         for (int i = 0; i < size*size; i++) new_image_in[i] = (listOfImages_new.image_ptr(iimage))[i];
-        //         RT_SF(new_image_in, new_image_out, size, size, rotation, shiftx, shifty);
-        //         // old
-        //         for (int i = 0; i < size*size; i++) old_image_in[i] = (listOfImages_old.image_ptr(iimage))[i];
-        //         spider_rtsf(old_image_in, old_image_out, size, size, rotation, shiftx, shifty);
-        //         // compare
-        //         for (int i = 0; i < size*size; i++) {
-        //             if (new_image_out[i] != old_image_out[i]) {
-        //                 std::cout<<"wrong...rotate and shit image...."<<std::endl;
-        //                 exit(1);
-        //             }
-        //         }
-        //     }
-        // }
-        // std::cout<<"random shift and rotate image to see what happen-------------"<<std::endl;
-        // memcpy(listOfImages_new.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
-        // for (int iimage = 0; iimage < N; iimage++) {
-        //     double rotation = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
-        //     double shiftx = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
-        //     double shifty = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
-        //     for (int i = 0; i < size*size; i++) new_image_in[i] = (listOfImages_new.image_ptr(iimage))[i];
-        //     RT_SF(new_image_in, new_image_out, size, size, rotation, shiftx, shifty);
-        //     for (int i = 0; i < size*size; i++) (listOfImages_new.image_ptr(iimage))[i] = new_image_out[i];
-        // }
-        // Mrcs::writeMrcsData(fn_mrcs+"_rt_sf", listOfImages_new);
-        // _mm_free(new_image_in);
-        // _mm_free(new_image_out);
-        // _mm_free(old_image_in);
-        // _mm_free(old_image_out);
+        std::cout<<"testing rotation and shift the image----------------"<<std::endl;
+        // temp data
+        float* new_image_in = (float*)aMalloc(sizeof(float)*size*size,64);
+        float* new_image_out = (float*)aMalloc(sizeof(float)*size*size,64);
+        float* old_image_in = (float*)aMalloc(sizeof(float)*size*size,64);
+        float* old_image_out = (float*)aMalloc(sizeof(float)*size*size,64);
+        for (int i = 0; i < 10; i++) {
+            memcpy(listOfImages_new.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
+            memcpy(listOfImages_old.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
+            for (int iimage = 0; iimage < N; iimage++) {
+                double rotation = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
+                double shiftx = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
+                double shifty = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
+                std::cout<<rotation<<" "<<shiftx<<" "<<shifty<<std::endl;
+                // new
+                for (int i = 0; i < size*size; i++) new_image_in[i] = (listOfImages_new.image_ptr(iimage))[i];
+                RT_SF(new_image_in, new_image_out, size, size, rotation, shiftx, shifty);
+                // old
+                for (int i = 0; i < size*size; i++) old_image_in[i] = (listOfImages_old.image_ptr(iimage))[i];
+                spider_rtsf(old_image_in, old_image_out, size, size, rotation, shiftx, shifty);
+                // compare
+                for (int i = 0; i < size*size; i++) {
+                    if (new_image_out[i] != old_image_out[i]) {
+                        std::cout<<"wrong...rotate and shit image...."<<std::endl;
+						EXIT_ABNORMALLY;
+                    }
+                }
+            }
+        }
+        std::cout<<"random shift and rotate image to see what happen-------------"<<std::endl;
+        memcpy(listOfImages_new.image_ptr(0), listOfImages_original.image_ptr(0), sizeof(float)*N*size*size);
+        for (int iimage = 0; iimage < N; iimage++) {
+            double rotation = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
+            double shiftx = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
+            double shifty = static_cast <double> (rand()) / (static_cast <double> (RAND_MAX/1000)) - 500.0;
+            for (int i = 0; i < size*size; i++) new_image_in[i] = (listOfImages_new.image_ptr(iimage))[i];
+            RT_SF(new_image_in, new_image_out, size, size, rotation, shiftx, shifty);
+            for (int i = 0; i < size*size; i++) (listOfImages_new.image_ptr(iimage))[i] = new_image_out[i];
+        }
+        Mrcs::writeMrcsData(fn_mrcs+"_rt_sf", listOfImages_new);
+        aFree(new_image_in);
+        aFree(new_image_out);
+        aFree(old_image_in);
+        aFree(old_image_out);
         
     }
 }

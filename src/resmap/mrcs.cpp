@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Yong Bei Ma(galowma@gmail.com) Jian Wang(wj_hust08@hust.edu.cn)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,10 +21,12 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "mrcs.h"
 
 namespace Mrcs {
-
+    
     // read Mrcshead from *.mrcs file
     void readMrcsHead(std::string fn_mrcs,MrcsHead& mrcsHead){
         
@@ -35,7 +40,7 @@ namespace Mrcs {
         
         inFile.close();
     }
-
+    
     // read MrcHead from *.mrc
     bool readMrcHead(std::string fn_mrc,MrcsHead& refHead,int size){
         FILE* refFile = fopen((fn_mrc).c_str(),"rb");

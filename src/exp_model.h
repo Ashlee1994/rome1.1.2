@@ -21,22 +21,95 @@
 #ifndef EXP_MODEL_H_
 #define EXP_MODEL_H_
 
-#include <iostream>
-#include <assert.h>
-#include <omp.h>
-#include <vector>
-#include <cmath>
 
-#include "./debug.h"
-
-#include "./fft_fftw3.h"
-#include "./metadata.h"
-#include "./image.h"
 #include "./ctf.h"
-#include "./sampling.h"
+#include "./debug.h"
+#include "./fft_fftw3.h"
+#include "./image.h"
+#include "./map_model.h"
+#include "./metadata.h"
 #include "./mrcs.h"
 #include "./ml_model.h"
-#include "./map_model.h"
+#include "./sampling.h"
+
+// 4~10% 10e-6 error if turn on
+// so default use single translation for comparison
+//#define DOUBLE_TRANSLATION
+//#define TRIPLE_TRANSLATION
+
+// rearrange the image array to resolution increase array....
+class FourierShellTranslation : public NoCopy {
+	int* nIndexFine;// old index for each new pixel point
+	int* iResFine;// resolution for each new pixel points
+	std::vector<double*> TempDataThread;
+	int oldFsize2Fine, newFsize2Fine;
+	// coase image
+	int* nIndexCoarse;
+	int oldFsize2Coarse, newFsize2Coarse;// assert(coarseSize <= fineSize);
+										 // norm correction
+	int min_iRes, max_iRes;
+	int normCorrLo, normCorrHi;
+	// scale correction
+	std::vector<int> scaleCorrThresholdRes;
+	std::vector<int> scaleCorrLo;
+	std::vector<int> scaleCorrHi;
+    std::vector<int*> scaleCorrExcludingIndex;// If data_va_prior is not monotone decreasing
+public:
+	FourierShellTranslation() :nIndexFine(nullptr), iResFine(nullptr), oldFsize2Fine(0), newFsize2Fine(0),
+		nIndexCoarse(nullptr), oldFsize2Coarse(0), newFsize2Coarse(0),
+		min_iRes(0), max_iRes(0), normCorrLo(0), normCorrHi(0),
+		scaleCorrThresholdRes(0), scaleCorrLo(0), scaleCorrHi(0), scaleCorrExcludingIndex(0) {}
+	~FourierShellTranslation() { clear(); }
+	//
+	void checksum(Checksum<int> & checksumCoarse, Checksum<int> & checksumFine) const {
+		checksumCoarse.init(nIndexCoarse, newFsize2Coarse);
+		checksumFine.init(nIndexFine, newFsize2Fine);
+	}
+	//
+	void setCoarseImageBoundary(const int* _Mresol_coarse, int _size);
+	//
+	void setNormCorrectionBoundary(const int* _Mresol_fine, int _size);
+	inline int getNormCorrLo() { return normCorrLo; }
+	inline int getNormCorrHi() { return normCorrHi; }
+	//
+	void setScaleCorrectionBoundary(const VectorOfArray2d<FDOUBLE>& data_vs_prior_class);
+	inline int getScaleCorrLo(int iclass) { return scaleCorrLo[iclass]; }
+	inline int getScaleCorrHi(int iclass) { return scaleCorrHi[iclass]; }
+	//
+	void setTransformFineAndCoarse(int nr_threads) {
+		TempDataThread.resize(nr_threads);
+		for (int thread = 0; thread < nr_threads; thread++) { TempDataThread[thread] = (double*)aMalloc(sizeof(double)*newFsize2Fine, 64); }
+	}
+
+	static IntPerformanceCounter transformFinePerformanceCounter;
+	static IntPerformanceCounter transformCoarsePerformanceCounter;
+
+	void transformFine(int tid, double* data, int size) const {
+		transformFinePerformanceCounter.count.v++;
+		assert(oldFsize2Fine == size);
+		for (int i = 0; i < newFsize2Fine; i++) { (TempDataThread[tid])[i] = data[nIndexFine[i]]; }
+		for (int i = 0; i < newFsize2Fine; i++) { data[i] = (TempDataThread[tid])[i]; }
+	}
+	void transformBackFine(int tid, double* data, int size) const {
+		assert(oldFsize2Fine == size);
+		for (int i = 0; i < newFsize2Fine; i++) { (TempDataThread[tid])[i] = data[i]; }
+		for (int i = 0; i < newFsize2Fine; i++) { data[nIndexFine[i]] = (TempDataThread[tid])[i]; }
+	}
+
+	void transformCoarse(int tid, double* data, int size) const {
+		transformCoarsePerformanceCounter.count.v++;
+		assert(oldFsize2Coarse == size);
+		for (int i = 0; i < newFsize2Coarse; i++) { (TempDataThread[tid])[i] = data[nIndexCoarse[i]]; }
+		for (int i = 0; i < newFsize2Coarse; i++) { data[i] = (TempDataThread[tid])[i]; }
+	}
+	//
+	void clear();
+	inline int* rptr_nIndexFine() const { return nIndexFine; }
+	inline int* rptr_nIndexCoarse() const { return nIndexCoarse; }
+	inline int fineFsize2() { return newFsize2Fine; }
+	inline int coarseFsize2() { return newFsize2Coarse; }
+};
+
 
 class ParticleModel
 {
@@ -77,6 +150,7 @@ public:
     ELTVEC(MetaDataElem, exp_metadata            	, 0         , exp_nr_images             ) SEP \
     ELTVE2(FDOUBLE  , exp_images            		, 0         , exp_nr_images*ori_size2   ) SEP \
     ELTVE2(FDOUBLE  , Fctfs            				, 0         , exp_nr_images*fine_Fsize2 ) SEP \
+    ELTVE2(FDOUBLE  , FctfsOne            			, 0         , exp_nr_images*fine_Fsize2 ) SEP \
     /* masked image,fine search size (current_size),for calculate weight */ 					  \
     ELTVE2(FDOUBLE  , Fimages_mask_fine_real        , 0         , exp_nr_images*fine_Fsize2 ) SEP \
     ELTVE2(FDOUBLE  , Fimages_mask_fine_imag        , 0         , exp_nr_images*fine_Fsize2 ) SEP \
@@ -100,7 +174,161 @@ public:
 #endif
     std::vector< CTF*			  > threadCTFer;
     bool do_shifts_onthefly;
+
+//#define DEBUG_SHIFTER_POOL
+	struct State {
+		enum Status {
+			uninited,
+			initTableDone,
+			initDone,
+			transformDone
+		} status;
+		State() { init(); }
+		void init() { 
+			// Set all so State can be compared
+			status = uninited; 
+#if defined(DEBUG_SHIFTER_POOL)
+			debugTransformed = false;
+#endif
+		}
+		// initTableDone
+		int fine_Fsize2;
+#if defined(DEBUG_SHIFTER_POOL)
+		bool debugTransformed;
+#endif
+		// initDone
+		int current_size; double shiftx; double shifty; int ori_size;
+		// transformDone
+		FourierShellTranslation const * fourierShellTrans;
+		int fourierShellTrans_uid;
+		bool transformToCoarse;
+		int exp_current_Fsize2;
+#if defined(DEBUG_SHIFTER_POOL)
+		Checksum<double> aTable_checksum_before, aTable_checksum_after;
+		Checksum<int>    fourierShellTrans_checksum_coarse, fourierShellTrans_checksum_fine;
+#endif
+
+		bool operator==(State const & rhs) const {
+#define EQL(N) (N == rhs.N)
+			if (!EQL(status)) return false;
+			if (status < initTableDone) return true;
+			if (!EQL(fine_Fsize2)) return false;
+			if (status < initDone) return true;
+			if (!( EQL(current_size)
+				&& EQL(shiftx)
+				&& EQL(shifty)
+				&& EQL(ori_size))) return false;
+			if (status < transformDone) return true;
+			if (!( EQL(fourierShellTrans)
+				&& (fourierShellTrans_uid == fourierShellTrans->uid())
+				&& EQL(transformToCoarse)
+				&& EQL(exp_current_Fsize2)
+				)) return false;
+			return true;
+#undef EQL
+		}
+	};
+
+	class ShifterPool;
+	class ShiftImageAssistor;
+
+	class Shifter : public ShiftImageInFourierTransformNew<FDOUBLE, FDOUBLE> {
+	public:
+		Shifter() : index(-1), acquiredCount(0), freeNext(nullptr), freePrev(nullptr) {}
+		virtual ~Shifter() {}
+	protected:
+		Shifter*	freeNext;
+		Shifter*	freePrev;
+		int			index;
+		int			acquiredCount;
+		State		currentState;
+		friend class ParticleModel::ShifterPool;
+		friend class ParticleModel::ShiftImageAssistor;
+		friend void doTransformNow(
+			const ParticleModel::State & desiredState,
+			ParticleModel::Shifter* shifter);
+		bool acquire(State const & state, int index);
+		void release();
+	};
+
+	class ShiftImageAssistor : public NoCopy {
+		//
+		// We are working towards having this table 
+		// be a subset of just the tables that are needed and fit in the L2 cache
+		// recomputing the ones that are needed rather than polluting the cache with unneeded ones
+		//
+		int				         statesCapacity;
+		int				         statesSize;
+		State*                   desiredStates;
+		ShifterPool*	  const  shifterPool;
+
+		int max_dim0, max_dim1, dim0, dim1;
+	public:
+		ShiftImageAssistor(ParticleModel & parent);
+		~ShiftImageAssistor();
+		void setMaxDims(int max_exp_nr_trans, int max_exp_nr_over_trans);
+		void initTable (int fine_Fsize2);
+		void setCurrDims(int exp_nr_trans, int exp_nr_over_trans);
+		void setInitArgs(int itrans, int iover_trans, int itrans_over_trans, int current_size, double shiftx, double shifty, int ori_size);
+		void transform(int itrans, int iover_trans, int itrans_over_trans, const int exp_current_Fsize2, FourierShellTranslation const & fourierShellTrans, bool useCoarse);
+		Shifter const * acquireShifter (int itrans, int iover_trans, int itrans_over_trans);
+		void releaseShifter(Shifter const * & shifter);
+	private:
+		Shifter       * acquireShifterW(int itrans, int iover_trans, int itrans_over_trans);
+		void releaseShifter(Shifter       * & shifter);
+
+		int index(int itrans, int iover_trans, int itrans_over_trans) const {
+			if (itrans < 0 || dim0 <= itrans || iover_trans < 0 || dim1 <= iover_trans)
+				EXIT_ABNORMALLY;
+			auto result = itrans*dim1 + iover_trans;
+			if (result != itrans_over_trans) {
+				std::cerr << "ShiftImageAssistor::index problem "
+					<< " itrans:" << itrans
+					<< " dim1:" << dim1
+					<< " iover_trans:" << iover_trans
+					<< " itrans_over_trans:" << itrans_over_trans
+					<< std::endl;
+				EXIT_ABNORMALLY;
+			}
+			return result;
+		}
+	} shiftImageAssistor;
+
+    ShiftImageAssistor largeShiftedABTable;
+    ShiftImageAssistor smallShiftedABTable;
+    ShiftImageAssistor largeXShiftedABTable;
+    ShiftImageAssistor largeYShiftedABTable;
     
+	void shiftAssistorsSetMaxDims(int max_exp_nr_trans, int max_exp_nr_over_trans) {
+		shiftImageAssistor       .setMaxDims(max_exp_nr_trans, max_exp_nr_over_trans);
+#if defined(DOUBLE_TRANSLATION) || defined(TRIPLE_TRANSLATION)
+		largeShiftedABTable      .setMaxDims(max_exp_nr_trans,                     1);
+		smallShiftedABTable      .setMaxDims(1,                max_exp_nr_over_trans);
+		largeXShiftedABTable     .setMaxDims(max_exp_nr_trans,                     1);
+		largeYShiftedABTable     .setMaxDims(max_exp_nr_trans,                     1);
+#endif
+	}
+
+	void shiftAssistorsSetCurrDims(int exp_nr_trans, int exp_nr_over_trans) {
+		shiftImageAssistor		 .setCurrDims(exp_nr_trans, exp_nr_over_trans);
+#if defined(DOUBLE_TRANSLATION) || defined(TRIPLE_TRANSLATION)
+		largeShiftedABTable		 .setCurrDims(exp_nr_trans,					1);
+		smallShiftedABTable		 .setCurrDims(1,			exp_nr_over_trans);
+		largeXShiftedABTable	 .setCurrDims(exp_nr_trans,					1);
+		largeYShiftedABTable	 .setCurrDims(exp_nr_trans,					1);
+#endif
+	}
+
+	void shiftAssistorsInitTable(int fine_Fsize2) {
+		shiftImageAssistor.initTable(fine_Fsize2);
+#if defined(DOUBLE_TRANSLATION) || defined(TRIPLE_TRANSLATION)
+		largeShiftedABTable .initTable(fine_Fsize2);
+		largeXShiftedABTable.initTable(fine_Fsize2);
+		largeYShiftedABTable.initTable(fine_Fsize2);
+		smallShiftedABTable .initTable(fine_Fsize2);
+#endif
+	}
+
 #define SEP
 #define ELTONE(T,N,V,S) T N;
 #define ELTVEC(T,N,V,S) VectorOfStruct<T> N;
@@ -115,7 +343,13 @@ public:
 #undef ELTONE
 #undef SEP
     
-    ParticleModel(){
+    ParticleModel() : 
+		shiftImageAssistor(*this),
+		largeShiftedABTable(*this),
+		smallShiftedABTable(*this),
+		largeXShiftedABTable(*this),
+		largeYShiftedABTable(*this)
+	{
 #define ELTONE(T,N,V,S) N = V;
 #define ELTVEC(T,N,V,S)
 #define ELTVE1(T,N,V,S)
@@ -142,7 +376,7 @@ public:
     void setup(int _nr_pool,int _current_size,int _coarse_size,int exp_nr_trans = 0,int exp_nr_over_trans = 0);
     
     // destroy the Images Transformer
-    void destory();
+    void destroy();
     
     // set up the expectation step image data
     // NOTE : the exp_nr_images maybe small than nr_images in final search pool
@@ -325,6 +559,12 @@ public:
             windowFourierTransform(exp_Fimage_mask_fine_real, exp_Fimage_mask_fine_imag, fine_size,
                                    exp_Fimage_mask_coarse_real, exp_Fimage_mask_coarse_imag, coarse_size);
             
+#ifdef DATA_STREAM
+            global_data_stream->foutDouble(exp_image, ori_size2, "getFourierTransformsAndCtfs()_maskimg", __FILE__, __LINE__);
+            global_data_stream->foutDouble(tempImage, ori_size2, "getFourierTransformsAndCtfs()_maskimg_centerFFT", __FILE__, __LINE__);
+            global_data_stream->foutDouble(tempFimage_real, ori_Fsize2, "getFourierTransformsAndCtfs()_maksFFT_real", __FILE__, __LINE__);
+            global_data_stream->foutDouble(tempFimage_imag, ori_Fsize2, "getFourierTransformsAndCtfs()_maskFFT_imag", __FILE__, __LINE__);
+#endif
             // Store the power_class spectrum of the whole image (to fill sigma2_noise between current_size and ori_size
             if (fine_size < ori_size)
             {
@@ -355,6 +595,9 @@ public:
                 }
                 // Let's use .at() here instead of [] to check whether we go outside the vectors bounds
                 exp_highres_Xi2_imgs[iimage] = highres_Xi2;
+#ifdef DATA_STREAM
+                global_data_stream->foutDouble(exp_power_imgs[iimage].wptr(ori_Fsize), ori_Fsize, "getFourierTransformsAndCtfs()_exp_power_imgs", __FILE__, __LINE__);
+#endif
             }
             else
             {
@@ -362,11 +605,6 @@ public:
             }
             
 #ifdef DATA_STREAM
-            global_data_stream->foutDouble(exp_image, ori_size2, "getFourierTransformsAndCtfs()_maskimg", __FILE__, __LINE__);
-            global_data_stream->foutDouble(tempImage, ori_size2, "getFourierTransformsAndCtfs()_maskimg_centerFFT", __FILE__, __LINE__);
-            global_data_stream->foutDouble(tempFimage_real, ori_Fsize2, "getFourierTransformsAndCtfs()_maksFFT_real", __FILE__, __LINE__);
-            global_data_stream->foutDouble(tempFimage_imag, ori_Fsize2, "getFourierTransformsAndCtfs()_maskFFT_imag", __FILE__, __LINE__);
-            global_data_stream->foutDouble(exp_power_imgs[iimage].wptr(ori_Fsize), ori_Fsize, "getFourierTransformsAndCtfs()_exp_power_imgs", __FILE__, __LINE__);
             global_data_stream->foutDouble(exp_highres_Xi2_imgs[iimage], "getFourierTransformsAndCtfs()_exp_highres_Xi2_imgs", __FILE__, __LINE__);
             global_data_stream->foutDouble(exp_Fimage_mask_fine_real, fine_Fsize2, "getFourierTransformsAndCtfs()_expmaksFFT_real", __FILE__, __LINE__);
             global_data_stream->foutDouble(exp_Fimage_mask_fine_imag, fine_Fsize2, "getFourierTransformsAndCtfs()_expmaskFFT_imag", __FILE__, __LINE__);
@@ -401,15 +639,36 @@ public:
     }
     
     //
-    void getShiftedNomaskImage(int iimage,FDOUBLE* Fimgs_shifted_nomask_real,FDOUBLE* Fimgs_shifted_nomask_imag,
-                               int exp_current_size,SamplingGrid& samplingGrid,int itrans,int iover_trans);
+    void getLargeShiftedMaskImageOneTile(int iimage,FDOUBLE* Fimgs_shifted_mask_real,FDOUBLE* Fimgs_shifted_mask_imag,
+                                  		 int n_start,int n_end,int itrans);
+    //
+    void getLargeShiftedNomaskImageOneTile(int iimage,FDOUBLE* Fimgs_shifted_nomask_real,FDOUBLE* Fimgs_shifted_nomask_imag,
+                                           int n_start,int n_end,int itrans);
+    //
+    void getLargeShiftedMaskImageDecompOneTile(int iimage,FDOUBLE* Fimgs_shifted_mask_real,FDOUBLE* Fimgs_shifted_mask_imag,
+                                               int n_start,int n_end,int itrans,SamplingGrid& samplingGrid);
+    //
+    void getLargeShiftedNomaskImageDecompOneTile(int iimage,FDOUBLE* Fimgs_shifted_nomask_real,FDOUBLE* Fimgs_shifted_nomask_imag,
+                                                 int n_start,int n_end,int itrans,SamplingGrid& samplingGrid);
+    //
+    void getShiftedMaskImageOneTileCoarse(int iimage,FDOUBLE* Fimgs_shifted_mask_real,FDOUBLE* Fimgs_shifted_mask_imag,
+                                          int n_start,int n_end, int itrans, int iover_trans, int itrans_over_trans);
+    //
+    void getShiftedMaskImageOneTileFine(int iimage,FDOUBLE* Fimgs_shifted_mask_real,FDOUBLE* Fimgs_shifted_mask_imag,
+                                        int n_start,int n_end, int itrans, int iover_trans, int itrans_over_trans);
+    //
+    void getShiftedNomaskImageOneTile(int iimage,FDOUBLE* Fimgs_shifted_nomask_real,FDOUBLE* Fimgs_shifted_nomask_imag,
+                                      int n_start,int n_end, int itrans, int iover_trans, int itrans_over_trans);
+    //
+    void testDoubleOrTripleTranslation(SamplingGrid& samplingGrid,int exp_current_size);
     
     // get all shifted Fimg,Fimg_nomask and CTF,also get inversed sigma^2
     void preShiftedImagesCtfsAndInvSigma2s(Aligned3dArray<FDOUBLE>& exp_Fimgs_shifted_real,
                                            Aligned3dArray<FDOUBLE>& exp_Fimgs_shifted_imag,
                                            VectorOfArray2d<FDOUBLE>& exp_local_Minvsigma2s,
-                                           VectorOfArray1d<FDOUBLE>& exp_local_sqrtXi2,bool do_cc,
-                                           VectorOfArray2d<FDOUBLE>& exp_local_Fctfs,int exp_current_size,
+                                           VectorOfArray1d<FDOUBLE>& exp_local_sqrtXi2,
+                                           VectorOfArray2d<FDOUBLE>& exp_local_Fctfs,
+                                           int exp_current_size,bool do_cc,bool do_coarse_search,
                                            SamplingGrid& samplingGrid,MLModel& mlModel,
                                            VectorOfInt& Mresol_coarse,VectorOfInt& Mresol_fine);
     
@@ -420,7 +679,10 @@ public:
     
     //
     void unitTest();
-    
+private:
+    void inline shiftOneFimageByXYabTable(const FDOUBLE* Fimgs_in_real,const FDOUBLE* Fimgs_in_imag,
+                                          FDOUBLE* Fimgs_out_real,FDOUBLE* Fimgs_out_imag,
+                                          int n_start,int n_end,int itrans,SamplingGrid& samplingGrid);
 };
 
 

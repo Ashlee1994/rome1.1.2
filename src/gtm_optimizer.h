@@ -21,16 +21,7 @@
 #ifndef GTM_OPTIMIZER_H_
 #define GTM_OPTIMIZER_H_
 
-#include <iostream>
-#include <cmath>
-#include <limits>
-#include <string>
-#include <memory.h>
-#include <cstdlib>
-#include <iomanip>
-#include <assert.h>
-
-#include <omp.h>
+#include "./util.h"
 
 #define DONT_USE_OFFLOAD
 #ifdef DONT_USE_OFFLOAD
@@ -54,8 +45,6 @@
 #include "./string.h"
 
 #define DEBUGGTM
-
-#define MEMALIGNMENT 64
 
 // We have array indices > 2^31.  This will adversely effect vectorization
 #define INDEXSZ(x) ((size_t)(x))
@@ -109,7 +98,7 @@ namespace GTMoptimizer
     
     // TODO
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) double* PHI;
+        __attribute__((aligned(64))) double* PHI;
     
     // Maximum number of conformations
     extern MIC_OFFLOAD_ATTRIBUTES int K;
@@ -126,41 +115,41 @@ namespace GTMoptimizer
     
     // The real part of the image data in Fourier space
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* TReal;
+        __attribute__((aligned(64))) float* TReal;
     
     // The imaginary part of the image data in Fourier space
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* TImag;
+        __attribute__((aligned(64))) float* TImag;
 
     // CTF function for each pixel of each image
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* CTFvalue;
+        __attribute__((aligned(64))) float* CTFvalue;
     
     // The real part of the weights of mapping
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* WReal;
+        __attribute__((aligned(64))) float* WReal;
     
     // The imaginary part of the weights of mapping
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* WImag;
+        __attribute__((aligned(64))) float* WImag;
     
     // The real part of the points mapped from latent space to
     // a point in the data space
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) double* YReal;
+        __attribute__((aligned(64))) double* YReal;
     
     // The imaginary part of the points mapped from the latent space 
     // to a point in the data space
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) double* YImag;
+        __attribute__((aligned(64))) double* YImag;
     
     // The posterior probability matrix
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) double* R;
+        __attribute__((aligned(64))) double* R;
     
     // The variance of the isotropic Gaussian prior distribution over W
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float* Alpha;
+        __attribute__((aligned(64))) float* Alpha;
     
     // The mean variance of noise
     extern MIC_OFFLOAD_ATTRIBUTES double AverageBeta;
@@ -170,15 +159,15 @@ namespace GTMoptimizer
     
     // The real part of classaverage
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float *avTReal;
+        __attribute__((aligned(64))) float *avTReal;
     
     // The imaginary part of classaverage
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) float *avTImag;
+        __attribute__((aligned(64))) float *avTImag;
     
     // Temporary Matrix used in the mkl_solve,size M x sizeof(int)
     extern MIC_OFFLOAD_ATTRIBUTES
-        __attribute__((aligned(MEMALIGNMENT))) int *ipiv;
+        __attribute__((aligned(64))) int *ipiv;
     
     // The number of basis exp functions
     extern int Mnl;
@@ -277,7 +266,7 @@ namespace GTMoptimizer
             classNumber = imageNumberPerClass.size();
             // set the fine class number for each class
             fineClassNumberPerClass.resize(classNumber,0);
-            if(config_fn == "default")// default
+            if (config_fn == "default")
             {
                 for (int iclass = 0; iclass < classNumber; iclass++)
                 {
@@ -305,7 +294,7 @@ namespace GTMoptimizer
 #endif
                 }
             }
-            else // config file
+            else
             {
                 // read config file
                 std::ifstream configFile(config_fn.c_str());
@@ -330,7 +319,7 @@ namespace GTMoptimizer
             Mrcs::MrcsHead mrcsHead;
             Mrcs::readMrcsHead(pathGetDir(star_fn)+metaDataTable[0].IMAGE.NAME, mrcsHead);
             image_size = mrcsHead.NC;
-            classAverage = (float*)_mm_malloc(sizeof(float)*fineClassNumber*image_size*image_size,64);
+            classAverage = (float*)aMalloc(sizeof(float)*fineClassNumber*image_size*image_size,64);
             memset(classAverage, 0, sizeof(float)*fineClassNumber*image_size*image_size);
             //
             metaDataElems.resize(imageNumber);
@@ -339,7 +328,7 @@ namespace GTMoptimizer
         }
         void destroyFineSearch(){
             if(doFineSearch) {
-                _mm_free(classAverage);
+                aFree(classAverage);
                 metaDataElems.resize(0);
                 imageNumberPerClass.resize(0);
                 fineClassNumberPerClass.resize(0);

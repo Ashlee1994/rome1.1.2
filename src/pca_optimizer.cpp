@@ -17,6 +17,9 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
+
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "pca_optimizer.h"
 
 // change the parater order@date 2014.09.30
@@ -37,8 +40,8 @@ Pca::Pca(double *_T,int _N,int _D,double *_X,int _K,int _L,double *_PHI,double *
 // using principal components,initialize W,Belta
 void Pca::initializeW(){
 
-	double *meanT = (double*)mkl_malloc(sizeof(double)*D,64);
-	double *covs = (double*)mkl_malloc(sizeof(double)*D*D,64);
+	double *meanT = (double*)aMalloc(sizeof(double)*D,64);
+	double *covs = (double*)aMalloc(sizeof(double)*D*D,64);
 	//it will get covs and meanT
 	mkl_cov(T,N,D,covs,meanT);  //symmetry
 	
@@ -58,7 +61,7 @@ void Pca::initializeW(){
 	// prtMatrix(eigVal,1,D);
 
 	// do first L element
-	double *A = (double*)_mm_malloc(sizeof(double)*D*L,64);
+	double *A = (double*)aMalloc(sizeof(double)*D*L,64);
 
 #pragma simd   //////we can put sqrt() out !!!!!!!!!!!!!!!!!!!!!!!!
 	for(int i = 0;i < D;i++)
@@ -75,13 +78,13 @@ void Pca::initializeW(){
 	std::cout<<"belta(in initializeW) = "<<*Belta<<std::endl;
 
 	// delete [] eigVal;
-	mkl_free(eigVal);
-	mkl_free(covs);
+	aFree(eigVal);
+	aFree(covs);
 
 	// std::cout<<"A = "<<std::endl;
 	// prtMatrix(A,D,L);
 
-	double *normX = (double*)mkl_malloc(sizeof(double)*K*L,64);
+	double *normX = (double*)aMalloc(sizeof(double)*K*L,64);
 	double *meanX = mkl_mean(X,K,L);
 	double *stdX = stddev(X,K,L);  //not found suitable mkl function for this
 #pragma simd
@@ -98,8 +101,8 @@ void Pca::initializeW(){
 
 	// FI*W = normX*A',solve FI*W(d) = (normX*A')(d)
 	// here,K must larger than M,for Overdetermined system
-	double *B = (double*)mkl_malloc(sizeof(double)*K*D,64);//normX*A'
-	double *AA = (double*)mkl_malloc(sizeof(double)*K*M,64);
+	double *B = (double*)aMalloc(sizeof(double)*K*D,64);//normX*A'
+	double *AA = (double*)aMalloc(sizeof(double)*K*M,64);
 
 #pragma omp parallel for
 	for(int k = 0;k < K;k++){
@@ -118,8 +121,8 @@ void Pca::initializeW(){
 	// }
 
 	// delete [] A;
-	_mm_free(A);
-	mkl_free(normX);
+	aFree(A);
+	aFree(normX);
 
 	memcpy(AA,PHI,sizeof(double)*K*M);   //K*M matrix PHI
 
@@ -139,9 +142,9 @@ void Pca::initializeW(){
 
 	memcpy(W+(M-1)*D,meanT,sizeof(double)*D);
 
-	mkl_free(meanT);
-	mkl_free(B);
-	mkl_free(AA);
+	aFree(meanT);
+	aFree(B);
+	aFree(AA);
 
 	// std::cout<<"W = "<<std::endl;
 	// prtMatrix(W,M,1);
@@ -159,7 +162,7 @@ void Pca::initializeBelta(){
 	// std::cout<<"Ydot = "<<std::endl;
 	// prtMatrix(Ydot,K,D);
 
-	mkl_free(Ydot);
+	aFree(Ydot);
 
 	for(int i = 0;i < K;i++)
 	  DIST[i*K+i] += std::numeric_limits<double>::max();
@@ -189,8 +192,8 @@ int Pca::mkl_cov(double *X,int N,int M,double *cov,double *mean){
 
 	VSLSSTaskPtr task;
 
-	// double *cov = (double*)mkl_malloc(sizeof(double)*M*M,64);
-	// double *mean = (double*)mkl_malloc(sizeof(double)*M,64);
+	// double *cov = (double*)aMalloc(sizeof(double)*M*M,64);
+	// double *mean = (double*)aMalloc(sizeof(double)*M,64);
 
 	MKL_INT p, n, xstorage;
 	int status;
@@ -211,7 +214,7 @@ int Pca::mkl_cov(double *X,int N,int M,double *cov,double *mean){
 	/* deallocate task resources */
 	status = vslSSDeleteTask( &task );
 
-	// mkl_free(mean);
+	// aFree(mean);
 	// return cov;
 	return status;
 }
@@ -251,7 +254,7 @@ double Pca::mkl_meanVec(double *X,int N){
 double *Pca::mkl_mean(double *X,int N,int M){
 	VSLSSTaskPtr task;
 
-	double *mean = (double*)mkl_malloc(sizeof(double)*M,64);
+	double *mean = (double*)aMalloc(sizeof(double)*M,64);
 
 	MKL_INT p, n, xstorage;
 	int status;
@@ -283,7 +286,7 @@ double *Pca::mkl_mean(double *X,int N,int M){
 double *Pca::mkl_min(double *X,int N,int M){
 	VSLSSTaskPtr task;
 
-	double *min = (double*)mkl_malloc(sizeof(double)*M,64);
+	double *min = (double*)aMalloc(sizeof(double)*M,64);
 
 	for(int m = 0;m < M;m++) /////////!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		min[m] = X[m];      //must do this initializition!!!!!!!!!!!!!!!!!!!!!!
@@ -315,9 +318,9 @@ double *Pca::mkl_min(double *X,int N,int M){
 // for 16cpus core,N = 10000,it costs 214.688 s..................
 double *Pca::mkl_eig(double *A,int N){
 
-	double* d = (double*)mkl_malloc(sizeof(double)*N,64);
-	double* e = (double*)mkl_malloc(sizeof(double)*N,64);
-	double* tau = (double*)mkl_malloc(sizeof(double)*N,64);
+	double* d = (double*)aMalloc(sizeof(double)*N,64);
+	double* e = (double*)aMalloc(sizeof(double)*N,64);
+	double* tau = (double*)aMalloc(sizeof(double)*N,64);
 	
 	// mkl_set_num_threads(32);
 
@@ -366,8 +369,8 @@ double *Pca::mkl_eig(double *A,int N){
 	}
 
 
-	mkl_free(d);
-	mkl_free(tau);
+	aFree(d);
+	aFree(tau);
 	return e;
 }
 
@@ -395,7 +398,7 @@ void Pca::mkl_solveOverdetermined(double *A,int N,int M,double *B,int D){
 // calculate the A[N][M] * B[M][D]
 double *Pca::mkl_multiplyMat(double *X,int N,int M,double *Y,int M2,int D){
 
-	double *C = (double*)mkl_malloc(sizeof(double)*N*D,64);
+	double *C = (double*)aMalloc(sizeof(double)*N*D,64);
 	// this fucntion calculate [C := alpha*op(A)*op(B) + beta*C]
 	// void cblas_dgemm ( const CBLAS_LAYOUT Layout , const CBLAS_TRANSPOSE transa , const
 	// CBLAS_TRANSPOSE transb , const MKL_INT m , const MKL_INT n , const MKL_INT k , const double
@@ -411,7 +414,7 @@ double *Pca::mkl_DIST(double *X,int N,int M){
 
 	std::cout<<"calling DIST,it may take lots of time."<<std::endl;
 
-	double *DIST = (double*)mkl_malloc(sizeof(double)*N*N,64);
+	double *DIST = (double*)aMalloc(sizeof(double)*N*N,64);
 	
 	double distance;
 	int index1,index2;
@@ -455,7 +458,7 @@ void Pca::mkl_stddev(){
 double *Pca::mean(double *X,int rows,int cols,bool doColumn/** = true**/){
     double *means;
     if(doColumn == true){ //calculate each column's mean
-        means = new double[cols];
+        means = vNew(double,cols);
         double sum;
         for(int j = 0;j < cols;j++){
             sum = 0;
@@ -465,7 +468,7 @@ double *Pca::mean(double *X,int rows,int cols,bool doColumn/** = true**/){
         }
     }
     else{
-        means = new double[rows];
+        means = vNew(double,rows);
         double sum;
         for(int i = 0;i < rows;i++){
             sum = 0;

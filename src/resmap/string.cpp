@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Yong Bei Ma(galowma@gmail.com) Jian Wang(wj_hust08@hust.edu.cn)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,16 +21,29 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "string.h"
 
 std::string pathRemoveSuffix(std::string path)
 {
+    /** 
     auto pos = path.find_last_of(".");
-    if (path[pos+1] != '/')
-        return path.substr(0,path.find_last_of("."));
+    // only work if path is a filename!
+    if ((path.substr(pos)).find("/")==std::string::npos)
+        return path.substr(0,pos);
     else
         return path;
-    
+     **/
+    int pos = -1;
+    if (path.find(".star") != std::string::npos) pos = path.find(".star");
+    else if (path.find(".mrcs") != std::string::npos) pos = path.find(".mrcs");
+    else if (path.find(".dat") != std::string::npos) pos = path.find(".dat");
+    else if (path.find(".mrc") != std::string::npos) pos = path.find(".mrc");
+    if (pos != -1)
+        return path.substr(0,pos);
+    else
+        return path;
 }
 
 std::string pathGetFilename(std::string path)

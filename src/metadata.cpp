@@ -18,11 +18,11 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "metadata.h"
-#include "./util.h"
 
 #ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #undef GROUP_NAME
 #endif
@@ -69,7 +69,19 @@ namespace LabelParser{
 class MetaDataTable::LabelStatus : public NoCopy {
 public:
 	std::vector<bool> metadataLabelStatus;
+
+	static LabelStatus* make(LabelStatus const & src) {
+#include "./util_heap_undefs.h"
+		return sNewA(LabelStatus, (src));
+#include "./util_heap_defs.h"
+	}
 	LabelStatus(LabelStatus const & src) : metadataLabelStatus(src.metadataLabelStatus) {}
+
+	static LabelStatus* make(size_t size) {
+#include "./util_heap_undefs.h"
+		return sNewA(LabelStatus, (size));
+#include "./util_heap_defs.h"
+	}
 	LabelStatus(size_t size) : metadataLabelStatus(size) {
 		for (auto const &elt : metadataLabelStatus) {
 			assert(!elt);
@@ -126,10 +138,10 @@ public:
 void MetaDataTable::readFromMetaDataElements(std::vector<MetaDataElem>& _metaDataElems)
 {
     // TODO : it will remove some undefined label,try to keep it
-    free();
+	freeMetaData();
 
 	assert(!latestLabelStatus);
-	latestLabelStatus = born(new LabelStatus(LabelParser::label2str.size()));
+	latestLabelStatus = LabelStatus::make(LabelParser::label2str.size());
 
 	metadata_order.resize(N);
     for (int i = 0; i < N; i++) metadata_order[i] = i;
@@ -145,10 +157,10 @@ void MetaDataTable::readFromStar(std::string fn_star)
 {
     static const bool debug = false;//true;
     
-    free();
+	freeMetaData();
 
 	assert(!latestLabelStatus);
-	latestLabelStatus = born(new LabelStatus(LabelParser::label2str.size()));
+	latestLabelStatus = LabelStatus::make(LabelParser::label2str.size());
 
     N = getImageNumber(fn_star);
     metaDataElems .resize(N);
@@ -323,6 +335,9 @@ void MetaDataTable::readFromStar(std::string fn_star)
     }
     // set group index
     if(debug) printTable();
+    //
+    subset_start = 0;
+    subset_end = N;
 }
 
 void MetaDataTable::writeToStar(std::string fn_star) const
@@ -366,7 +381,7 @@ void MetaDataTable::printTable(std::ostream& os, LabelStatus const & labelStatus
     
     for (auto& metaDataElem : metaDataElems) {
         for (int i = 0; i < metadataLabelStatus.size(); i++)
-            if (metadataLabelStatus[i] == true && i != ScaleCorrection )
+            if (metadataLabelStatus[i] == true && i != ScaleCorrection)
                 metaDataElem.get(MetaDataLabel(i),os);
         // other undefined label
 		auto& map = undefinedMetaDataElems.find(metaDataElem.INNERID)->second;
@@ -423,14 +438,73 @@ void MetaDataTable::fliterByClass(int selectedClass){
 }
 
 // randomly shuffle the Metadata
-void MetaDataTable::shuffle(int random_seed)
+// and split metadata to two random subset if no randomsubset read from *.star(only used in autorefine)
+void MetaDataTable::shuffle(int random_seed,bool do_split_random_halves)
 {
     //
     ERROR_CHECK(metadata_order.size()!=N, "metadata_order size error.");
-    
+    //
+    if (do_split_random_halves)
+    {
+        nr_ori_particles_subset1 = 0;
+        nr_ori_particles_subset2 = 0;
+        if (latestLabelStatus->containLabel(RandomSubset))
+        {
+            for (auto& metaDataElem : metaDataElems) {
+                int random_subset = metaDataElem.SUBSET;
+                if (random_subset == 1) nr_ori_particles_subset1++;
+                else if (random_subset == 2) nr_ori_particles_subset2++;
+                else ERROR_REPORT("ERROR MetaDataTable::shuffleAndSplit: invalid number for random subset (i.e. not 1 or 2): " + std::to_string((long long)random_subset));
+            }
+        }
+        else
+        {
+            srand(random_seed);
+            for (auto& metaDataElem : metaDataElems) {
+                int random_subset = rand() % 2 + 1;
+                metaDataElem.SUBSET = random_subset; // randomly 1 or 2
+                if (random_subset == 1) nr_ori_particles_subset1++;
+                else if (random_subset == 2) nr_ori_particles_subset2++;
+                else ERROR_REPORT("ERROR MetaDataTable::shuffleAndSplit: invalid number for random subset (i.e. not 1 or 2): " + std::to_string((long long)random_subset));
+            }
+        }
+    }
+    //
     // Randomise
-    if(random_seed != -1) srand(random_seed);
-    std::random_shuffle(metadata_order.begin(), metadata_order.end());
+    if(random_seed!=-1) srand(random_seed);
+    if (do_split_random_halves)
+    {
+        std::vector<int> metadata_order1, metadata_order2;
+        assert(metaDataElems.size()==nr_ori_particles_subset1+nr_ori_particles_subset2);
+        assert(nr_ori_particles_subset1>5);
+        assert(nr_ori_particles_subset2>5);
+        // Fill the two particle lists
+        for (int i = 0; i < metaDataElems.size(); i++)
+        {
+            int random_subset = metaDataElems[i].SUBSET;
+            if (random_subset == 1) metadata_order1.push_back(i);
+            else if (random_subset == 2) metadata_order2.push_back(i);
+            else ERROR_REPORT("ERROR MetaDataTable::shuffleAndSplit: invalid number for random subset (i.e. not 1 or 2): " + std::to_string((long long)random_subset));
+        }
+        
+        // Just a silly check for the sizes of the ori_particle_lists (to be sure)
+        assert(metadata_order1.size()==nr_ori_particles_subset1);
+        assert(metadata_order2.size()==nr_ori_particles_subset2);
+        
+        // Randomise the two particle lists
+        std::random_shuffle(metadata_order1.begin(), metadata_order1.end());
+        std::random_shuffle(metadata_order2.begin(), metadata_order2.end());
+        
+        // First fill metadata_order with the first subset, then with the second
+        metadata_order.clear();
+        for (const auto& i : metadata_order1) metadata_order.push_back(i);
+        for (const auto& i : metadata_order2) metadata_order.push_back(i);
+        assert(metadata_order.size()==metadata_order1.size()+metadata_order2.size());
+    }
+    else
+    {
+        std::random_shuffle(metadata_order.begin(), metadata_order.end());
+    }
     
 }
 
@@ -454,10 +528,10 @@ int MetaDataTable::getImageNumber(std::string starFileName)
     return N;
 }
 
-void MetaDataTable::free(){
+void MetaDataTable::freeMetaData(){
     if (N == 0) return;
     N = 0;
-	delete died(latestLabelStatus);
+	sDelete(latestLabelStatus);
     undefinedMetaDataLabels.clear();
     undefinedMetaDataElems.clear();
     metadata_order.resize(0);

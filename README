@@ -1,103 +1,168 @@
-----------------------------------------------------------------------
-ROME is developed by Intel Parallel Computing Center for Structural 
-Biology at Dana-Farber Cancer Institute, Harvard Medical School,
-in association with Peking University. For more information, please 
-visit:
-http://ipccsb.dfci.harvard.edu/rome
-----------------------------------------------------------------------
-ROME is an OPEN SOURCE program distributed under the General Public 
-license. Please see the LICENSE file for additional information.
-----------------------------------------------------------------------
-See INSTALL for installation instructions
-----------------------------------------------------------------------
-ROME has the following external dependencies:
-  1. Intel MKL
-  
-ROME GUI has the following external dependencies:
-  1. Python
-  2. Pillow
-  3. numpy
-  4. scipy
+https://bitbucket.org/
+    yongbei ma will invite you to join group ipccsb 
 
-----------------------------------------------------------------------
-The ROME Team:
+Install git on your system
 
-NOTE: though IPCCSB specifically develops and  maintains the ROME code 
-base, the project can only continue to move forward through the sponsorship 
-and participation of the broader community.
+Create a repository on your system
 
-   Founder and Principal Author:
+    mkdir repos
+    cd repos
+    git clone https://YOUR_BITBUCKET_USERNAME@bitbucket.org/ipccsb/rome1.1.git
 
-      Youdong Jack Mao 
 
-   Algorithmic Implementation:
+Options built into the sources, change before building
+    See the top of map2d_optimizer_base.h
 
-      Jiayi Wu
-      Yong-Bei Ma
-   
-   Code Optimization:
+To build
+    Linux
+        Set up the compiler etc. One of
+            source /opt/intel/composerxe/bin/compilervars.csh intel64
+            source /opt/intel.2016/compilers_and_libraries/linux/bin/compilervars.csh intel64
 
-      Charles Condgon
-      Bevin Brett
+        Change to the directory
+            cd ~/project/DanaFaber/repos/rome1.1 
 
-----------------------------------------------------------------------
-Disclaimer:
+        Make the build output directories
+        mkdir bin build build/apps build/src
+        
+        To build MAP:    
+            One of
+                make -kj4 DEBUG="-debug all" rome_map2d 
+                make -kj4 rome_map2d
+                make -kj4 rome_map3d
+                make -kj4 TBB="-ltbbmalloc_proxy" rome_map2d
 
-The source codes of ROME either contain or are derived from pieces of 
-codes from the following packages.
+                # Set LD_PRELOAD to load the release version of the proxy library
+                LD_PRELOAD=libtbbmalloc_proxy.so.2 
+                # Link with the release version of the proxy library
+                g++ foo.o bar.o -ltbbmalloc_proxy -o a.out
 
-RELION: http://www2.mrc-lmb.cam.ac.uk/relion/
-XMIPP: http:/xmipp.cnb.csic.es
-BSOFT: http://lsbr.niams.nih.gov/bsoft/
-SPIDER: http://spider.wadsworth.org/
-HEALPIX: http://healpix.jpl.nasa.gov/
+        To build GTM:
+                make -kj4 rome_gtm
 
-Original disclaimers in the code of these external packages have been 
-maintained as much as possible. Please contact Youdong Mao 
-(Youdong_Mao@DFCI.HARVARD.EDU) if you feel this has not been done correctly. 
+        To build both GTM and MAP:
+                make
 
-----------------------------------------------------------------------
-ROME 1.1.0 (March 29, 2017):
+    Windows
+        Bevin has a working VS2015 Sln that uses Intel C++ 17.0
+		but it is in the wrong place until he fixes it
+            Open repos\ROME1.1\Windows\rome_map3d\rome_map3d.sln
+            Build Solution
+	    	This will build map2d and map3d
 
-Unsupervised deep 2D classification is introduced. It implementes:
-1) Adaptive MAP-based image alignment and classification;
-2) SML based on GTM adapted to Fourier space;
-3) Deep2D protocol that combines MAP alignment with SML classification.
 
-The SML/Deep2D principle and method are documented in:
-J. Wu, Y. Ma, C. Condgon, B. Brett, S. Chen, Q. Ouyang, Y. Mao. 
-Unsupervised single-particle deep classification via statistical manifold 
-learning. arXiv:1604.04539 [physics.data-an] (2016).
+To run
+    The command line should be something based on this pattern
+        -i INPUTFILE -o OUTPUTFILE -k NUMBER OF CLASSES -iter -pixel TBD -pool TBD
+    or on this pattern
+        -unittest NAME
+			-unittest MLOptimizer_Kernel_correctness
+            -unittest MLOptimizer_Kernel_performance
+            NAME such as shiftImageInFourierTransformUnitTestCorrectness
 
-The adaptive MAP method was documented in:
-Sigworth, F.J. A maximum-likelihood approach to single-particle image 
-refinement. J Struct Biol 122, 328-339 (1998).
-Scheres, S.H. Maximum-likelihood Multi-reference Refinement for Electron 
-Microscopy Images. J Mol Biol 348, 139-149 (2005).
-Tagare, H.D., Barthel, A. & Sigworth, F.J. An adaptive Expectation-Maximization 
-algorithm with GPU implementation for electron cryomicroscopy. 
-J Struct Biol 171, 256-265 (2010).
-Scheres, S.H. A Bayesian view on cryo-EM structure determination. 
-J Mol Biol 415, 406-418 (2012).
+	There are test data and scripts in the testdata_2d and testdata_3d subdirectories
 
-----------------------------------------------------------------------
-Specific Acknowledgments:
+    Linux
+        command line which takes 30 secs .. 1 min to run...
+            bin/rome_map2d -i testdata_2d/data8_160/data8_160  -o NULL -k 20 -pixel 4. -iter 10 -pool  30 > testdata_2d/data8_160/emit_test_output_stab.txt
+        
+        running map 3d...
+            cd testdata_3d/pdh,testdata_3d/TMV,...
+            sh relion_3d.sh // run for relion refine
+            sh rome_3d.sh // run for rome ml3d
+            result file will be output at refine folder
+            use diff to compare the output *.star file
+            or _debug.txt to verify each step result.
 
-* Thanks to Kristina M. Kermanshache for advocate of Intel sponsorship,
-collaboration, corporate coordination and many help in project development.
+    Windows
+        map2d: The VS options Debug command line options could be:
+            -i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 5 -pool 30
+            -i ../../testdata_2d/data6/data6 -o NULL -k 4 -pixel 4. -iter 2 -pool 30 
+            -i ../../testdata_2d/data6/data6 -o NULL -k 3 -pixel 1.74 -iter 10 -pool 8
+            -i ../../syncplicity_dataset/N23D2dataset -o NULL -k 20 -pixel 4. -iter 3 -pool  30 
+			-i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 4 -pool 30 -ftrace ../../testdata_2d/data8_160/ftrace.txt 
 
-* Thanks to Mark Begley and Michael Moretti for help in obtaining Intel 
-software development tools.
+        map3d: The VS options Debug command line options could be:
+            -checker_ftrace c:\temp\rome3d_ftrace.txt -checker_o c:\temp\rome3d_benchmark.csv -checker_test desktop_pdh_debug_20160811a -i ../../testdata_3d/pdh/pdh.star -ref ../../testdata_3d/pdh/pdh_reference.mrc -particle_diameter 311 -pixel 3.11 -k 1 -o refine/pdh_rome -ini_high 60  -iter 10 -offset_range 8 -offset_step 2 -oversampling 1 -healpix_order 2 -random_seed 33 -pool 1 -tau2_fudge 4 -sym C1 --zero_mask -flatten_solvent -norm -scale -firstiter_cc
 
-* Thanks to Ram Ramanujam for project coordination.
+	Checkpoint restart
+		-i ../../testdata_2d/data8_160/data8_160 -o ../../testdata_2d/data8_160/data8_160_output -k 20 -pixel 4. -iter 1 -pool 30 
+		-i ../../testdata_2d/data8_160/data8_160_output_iter001 -o NULL -continue 1              -k 20 -pixel 4. -iter 2 -pool 30 
+		[Currently seems to crash because of -ve indefinites, not yet debugged]
 
-* Thanks to Clay Breshears and David S. Scott for helpful discussion.
+	Test output (use when src\map2d_optimizer_base.h is selecting emit_test_output)
+		-i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 3 -pool 30 
 
-* Thanks to Hao Wu, Liman Zhang and Yang Li in early adoption of ROME in 
-their research work.
+    Guidance support for making tests more deterministic
+		Create the guide
+			-i ../../testdata_2d/data8_160/data8_160 -o ../../testdata_2d/data8_160/guidance/data8_160_output -k 20 -pixel 4. -iter 5 -pool 30 
+		Use the guide
+			-i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 5 -pool 30 -testguidance ../../testdata_2d/data8_160/guidance/data8_160_output
 
-* Thanks to Shuobing Chen and Yanan Zhu for help in testing ROME.
+	Tandem execution (use when src\map2d_optimizer_base.h is selecting both the new and the original versions)
+		-i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 3 -pool 30 
 
-* Thanks to Jonathon Jackson and Tao Song in configuration and maintenance 
-of the testing cluster system.
+To debug on Linux
+    gdb bin/rome_map2d 
+    run -i testdata_2d/data8_160/data8_160  -o NULL -k 20 -pixel 4. -iter 10 -pool  30 > testdata_2d/data8_160/emit_test_output_stab.txt
 
+To collect Amplifier data
+    Linux
+        source /opt/intel.2016/vtune_amplifier_xe/amplxe-vars.csh
+        amplxe-gui &
+        
+            new project
+            
+            Analysis Target
+                application:    /home/nsl/brbrett/project/DanaFaber/repos/ROME2D/bin/rome_map2d
+                App params:     -i testdata_2d/data8_160/data8_160  -o NULL -k 20 -pixel 4. -iter 10 -pool  30
+                Working dir:    /home/nsl/brbrett/project/DanaFaber/repos/ROME1.1
+            
+            Analysis Type
+                Basic Hotspots
+            
+            Start
+                Output goes to the terminal window
+                Takes about 30 seconds
+                The only change in the amplixe-gui is the elapsed time ticking
+            
+        rm -rf r000hs1 ; amplxe-cl -collect hotspots -r r000hs1 bin/rome_map2d -i testdata_2d/data8_160/data8_160  -o NULL -k 20 -pixel 4. -iter 10 -pool  30 > testdata_2d/data8_160/emit_test_output_stab.txt     
+                
+        amplxe-gui r000hs1/*.amp* &
+
+To collect FTrace data
+    Windows
+        -i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 10 -pool 30 -checker_ftrace ../../testdata_2d/data8_160/ftrace.txt > ../../testdata_2d/data8_160/emit_test_output_stab.txt
+    Linux
+        rm -rf r000hs1 ; amplxe-cl -collect hotspots -r r000hs1 bin/rome_map2d -i testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 10 -pool 30 -checker_ftrace testdata_2d/data8_160/ftrace.txt > testdata_2d/data8_160/emit_test_output_stab.txt
+        amplxe-gui r000hs1/*.amp* &
+        
+Testing source changes
+    1)map2d_original and map2d_new
+    map2d_optimizer_base.h has the following line
+        static const bool emit_test_output_possible = true;
+    and some simple functions
+    which causes it to output data that lets the comparison of these to be useful
+        testdata_2d/data8_160/emit_test_output.txt 
+        testdata_2d/data8_160/emit_test_output_stab.txt
+    2)use -datastream_out and -datastream_in
+    map2d_old and map3d_old both base on RELION1.4,set data_stream_out_fn variable in RELION ml_optimiser.h,build and run with '--j 1',that will write 
+    datastream file to disk,then for map2d(3d) ,build with NO-openmp and set '-pool 1 -datastream_in relion_datastream_name' ,run and the datastream 
+    system will compare the result with the input datastream file.this means the RELION with '--j 1' and NO-openmp map2d(3d) with '-pool 1' will produce 
+    totaly same result.
+    3)compare the result star file or testguidence file
+    example:go to testdata_3d/1xck
+    run relion_3d.sh and rome_3d.sh,then compare_3d.sh 10,it will compare the 10th star file
+
+Commiting changes locally
+    git status
+    git add FILES
+    git commit -m "COMMENT"
+
+
+Push to Bitbucket
+    git push origin master
+
+    
+Pull the latest changes
+    git pull --all

@@ -20,18 +20,15 @@
 #ifndef IMAGE_H_
 #define IMAGE_H_
 
-#include <assert.h>
-#include <vector>
-#include <algorithm>
-#include <iomanip>
-#include <mkl.h>
+#include "./util.h"
 
 #include "./fft_fftw3.h"
 #include "./macros.h"
 #include "./bessel.h"
 #include "./error.h"
-#include "time.h"
-#include "macros.h"
+#include "./memory.h"
+#include "./time.h"
+#include "./macros.h"
 
 #define IS_INV true
 #define IS_NOT_INV false
@@ -50,11 +47,6 @@
 
 #undef LIN_INTERP
 #define LIN_INTERP(a, l, h) ((l) + ((h) - (l)) * (a))
-
-
-#ifndef FLT_EPSILON
-#define FLT_EPSILON 1.19209e-07
-#endif
 
 
 template<typename T>
@@ -269,7 +261,7 @@ void selfTranslate(T* V1,int dim,double offset_x,double offset_y,bool wrap = WRA
 {
     int dim2 = dim*dim;
     
-    T* aux = (T*)_mm_malloc(sizeof(T)*dim2,64);
+    T* aux = (T*)aMalloc(sizeof(T)*dim2,64);
     
     for (int i = 0; i < dim2; i++) {
         aux[i] = V1[i];
@@ -277,7 +269,7 @@ void selfTranslate(T* V1,int dim,double offset_x,double offset_y,bool wrap = WRA
     
     translate(aux, V1, dim, offset_x,offset_y, wrap, outside);
     
-    _mm_free(aux);
+    aFree(aux);
 }
 
 // Center an array, to have its origin at the origin of the FFTW
@@ -289,7 +281,7 @@ void CenterFFT(T* v, int dim,bool forward)
     // Shift in the X direction
     l = dim;
 
-    T* aux = (T*)_mm_malloc(sizeof(T)*l,64);
+    T* aux = (T*)aMalloc(sizeof(T)*l,64);
     
     shift = (int)(l / 2);
     
@@ -343,7 +335,7 @@ void CenterFFT(T* v, int dim,bool forward)
             v[i*dim+j] = aux[i];
     }
     
-    _mm_free(aux);
+    aFree(aux);
 }
 
 
@@ -667,25 +659,404 @@ namespace TabulatedSinCos {
             double dotpDivided = 2*PI*dotpDividedBy2Pi;
             int i = ((int)(fabs(dotpDivided)/sampling_cos_sin)) % nr_element;
 #endif
+#ifdef L2_CACHE_MODELING
+			mostRecentAccess[i].store(epoch);
+#endif
 			cos = tabulated[i].cos;
 			sin = tabulated[i].sin;
 			sin = (dotpDividedBy2Pi < 0)?-sin:sin;
 		}
+		int initNotingSeqAcc() const;
+		void finiNotingSeqAcc(int initResult) const;
+
 	private:
 		struct {double sin; double cos;} tabulated[nr_element];
+#ifdef L2_CACHE_MODELING
+		mutable std::atomic<int> epoch;
+		mutable std::atomic<int> mostRecentAccess[nr_element];
+#endif
 	};
 	extern const Table table;	// yuck but it keeps the tables const...
 };
 
+extern IntPerformanceCounter ShiftImageInFourierTransformNew_performanceCounter;
+extern IntPerformanceCounter ShiftImageInFourierTransformNew_init_performanceCounter;
 
 // Translation/ Time-Shifting : f(x-a)=e^(-iaw)F(w)=(cos(aw)+isin(aw))F(w)
+extern bool ShiftImageInFourierTransformNew_useSinCosTable;
+
+template<
+typename T1,	// some indexable type
+typename T2>	// some indexable type
+class ShiftImageInFourierTransformNew {
+private:
+    int    inout_size;
+    double shift_x;
+    double shift_y;
+    int    ori_size;
+    
+    int	 inout_Fsize;
+    int	 inout_Fsize2;
+    
+    double xshift;
+    double yshift;
+    bool   justMove;
+    
+    int	 size1;
+    int	 size2;
+    
+    double* aTable; // cos
+    double* bTable; // sin
+    int tableCapacity;
+public:
+    ShiftImageInFourierTransformNew()
+    : 	inout_size(0), shift_x(0), shift_y(0), ori_size(0),
+    	inout_Fsize (0),inout_Fsize2(0),
+    	xshift(0),yshift(0),
+        justMove(false),
+        size1(0),size2(0),tableCapacity(0),
+    	aTable(nullptr),bTable(nullptr)
+    {
+    }
+    ~ShiftImageInFourierTransformNew() { 
+		fini(); 
+		finiTable(); 
+	}
+    void setNeededTableCapacity(int needed){
+		if (needed <= tableCapacity) return;
+        finiTable();
+        tableCapacity = needed;
+        aTable = (double*)aMalloc(sizeof(double)*tableCapacity,64);
+        bTable = (double*)aMalloc(sizeof(double)*tableCapacity,64);
+    }
+    void finiTable(){
+        tableCapacity = 0;
+        aFree(aTable);
+        aFree(bTable);
+    }
+    void init(int inout_size, double shift_x, double shift_y, int ori_size)
+    {
+        fini();
+		ShiftImageInFourierTransformNew_init_performanceCounter.count.v++;
+        inout_size = inout_size; shift_x = shift_x; shift_y = shift_y; ori_size = ori_size;
+        inout_Fsize = inout_size / 2 + 1;
+        inout_Fsize2 = inout_size*inout_Fsize;
+        xshift = double(shift_x) / double(-ori_size);
+        yshift = double(shift_y) / double(-ori_size);
+        justMove = (fabs(xshift) < ROME_EQUAL_ACCURACY) && (fabs(yshift) < ROME_EQUAL_ACCURACY);
+        size1  = (             inout_Fsize)*inout_Fsize;
+        size2  = (inout_size - inout_Fsize)*inout_Fsize;
+        assert(inout_Fsize2 == size1 + size2);
+        assert(aTable);assert(bTable);assert(inout_Fsize2<=tableCapacity);
+		L2CacheModel::seqAcc("ShiftImageInFourierTransformNew a_table", 0, &aTable[0], inout_Fsize2);
+		L2CacheModel::seqAcc("ShiftImageInFourierTransformNew b_table", 0, &bTable[0], inout_Fsize2);
+		const auto sinCosInit = TabulatedSinCos::table.initNotingSeqAcc();
+
+		// top-half ring
+        for (int i = 0; i < inout_Fsize; i++) {
+            const double y = i;
+            for (int j = 0; j < inout_Fsize; j++) {
+                const double x = j;
+                const double dotpDividedBy2Pi = (x * xshift + y * yshift);
+                const int index = i*inout_Fsize + j;
+                assert(0 <= index && index < size1);
+                if (ShiftImageInFourierTransformNew_useSinCosTable) {
+                    TabulatedSinCos::table.sinCos(bTable[index],
+                                                  aTable[index],
+                                                  dotpDividedBy2Pi);
+                }
+                else{
+                    aTable[index] = cos(2*PI*dotpDividedBy2Pi);
+                    bTable[index] = sin(2*PI*dotpDividedBy2Pi);
+                }
+            }
+        }
+        // bottom-half ring
+        for (int i = inout_size - 1; i >= inout_Fsize; i--) {
+            const double y = i - inout_size;
+            for (int j = 0; j < inout_Fsize; j++) {
+                const int index = (i - inout_Fsize)*inout_Fsize+j;
+                assert(0 <= index && index < size2);
+                const double x = j;
+                const double dotpDividedBy2Pi = (x * xshift + y * yshift);
+                if (ShiftImageInFourierTransformNew_useSinCosTable) {
+                    TabulatedSinCos::table.sinCos(bTable[size1+index],
+                                                  aTable[size1+index],
+                                                  dotpDividedBy2Pi);
+                }
+                else{
+                    aTable[size1+index] = cos(2*PI*dotpDividedBy2Pi);
+                    bTable[size1+index] = sin(2*PI*dotpDividedBy2Pi);
+                }
+            }
+        }
+		TabulatedSinCos::table.finiNotingSeqAcc(sinCosInit);
+	}
+    void fini()
+    {
+        inout_size = 0; shift_x = 0; shift_y = 0; ori_size = 0;
+        inout_Fsize = 0; inout_Fsize2 = 0;
+        xshift = 0; yshift = 0;
+        justMove = false;
+        size1  = 0; size2  = 0;
+    }
+    inline       double* aTable_wptr()       { return aTable; }
+    inline       double* bTable_wptr()       { return bTable; }
+	inline const double* aTable_rptr() const { return aTable; }
+	inline const double* bTable_rptr() const { return bTable; }
+	inline       int     tableSize  () const { return inout_Fsize2; }
+    
+    void transform(const T1* fin_real, const T1* fin_imag, T2* fout_real, T2* fout_imag) const {
+        transformOneTile(0, inout_Fsize2,
+                         fin_real, fin_imag, fout_real, fout_imag);
+    }
+    void transformOneTile(const int nLo, const int nHi,
+                          const T1* fin_real, const T1* fin_imag, T2* fout_real, T2* fout_imag) const {
+        
+		ShiftImageInFourierTransformNew_performanceCounter.count.v++;
+
+		L2CacheModel::seqAcc("fout_real", -1, &fout_real[nLo], nHi - nLo);
+		L2CacheModel::seqAcc("fout_imag", -1, &fout_imag[nLo], nHi - nLo);
+		L2CacheModel::seqAcc("fin_real", -1,  &fin_real [nLo], nHi - nLo);
+		L2CacheModel::seqAcc("fin_imag", -1,  &fin_imag [nLo], nHi - nLo);
+
+		assert(0 <= nLo); assert(nHi <= inout_Fsize2);
+        if (justMove) {
+            for (int n = nLo; n < nHi; n++) {
+                fout_real[n] = CHECK_NOT_IND(fin_real[n]);
+                fout_imag[n] = CHECK_NOT_IND(fin_imag[n]);
+            }
+            return;
+        }
+
+		L2CacheModel::seqAcc("aTable", -1, &aTable[nLo], nHi - nLo);
+		L2CacheModel::seqAcc("bTable", -1, &bTable[nLo], nHi - nLo);
+
+#define LOOP \
+        for (int n = nLo; n < nHi; n++) {									\
+            const double a = aTable	 [n];									\
+            const double b = bTable	 [n];									\
+            const double c = fin_real[n];									\
+            const double d = fin_imag[n];									\
+            const double ac = a * c;										\
+            const double bd = b * d;										\
+            const double ab_cd = (a + b) * (c + d);							\
+            fout_real[n] = CHECK_NOT_IND(ac - bd        	        );		\
+            fout_imag[n] = CHECK_NOT_IND(ab_cd - ac - bd			);		\
+        }																	\
+// end of macro
+        if (isVectorAligned(&aTable[nLo])
+            && isVectorAligned(&bTable[nLo])
+            && isVectorAligned(&fin_real[nLo])
+            && isVectorAligned(&fin_imag[nLo])
+            && isVectorAligned(&fout_real[nLo])
+            && isVectorAligned(&fout_imag[nLo])
+            ) {
+#pragma vector aligned
+#pragma ivdep
+            LOOP
+        } else {
+#pragma ivdep
+            LOOP
+        }
+#undef LOOP
+    }
+    //
+    // four cases : shiftx+shifty,shiftx,shifty,none shift
+    //
+    void __declspec(noinline) transformOneTileByShiftXY(const int nLo, const int nHi,
+                                   const T1* fin_real, const T1* fin_imag, T2* fout_real, T2* fout_imag,
+                                   const T1* aTableX, const T1* bTableX, int XSize, double Xstatus,
+                                   const T1* aTableY, const T1* bTableY, int YSize, double Ystatus)
+    {
+		ShiftImageInFourierTransformNew_performanceCounter.count.v++;
+		
+		L2CacheModel::seqAcc("fout_real", -1, &fout_real[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fout_imag", -1, &fout_imag[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fin_real", -1, &fin_real[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fin_imag", -1, &fin_imag[nLo], nHi - nLo);
+        
+        assert(XSize == YSize);
+        assert(0 <= nLo);assert(nHi <= XSize);assert(nLo <= nHi);
+        
+        L2CacheModel::seqAcc("aTable", -1, &aTableX[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("bTable", -1, &bTableX[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("aTable", -1, &aTableY[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("bTable", -1, &bTableY[nLo], nHi - nLo);
+        
+#define LOOP_SHIFT_XY \
+        for (int n = nLo; n < nHi; n++) {									\
+            const double a1 = aTableX [n];									\
+            const double b1 = Xstatus*bTableX [n];							\
+            const double c1 = aTableY [n];									\
+            const double d1 = Ystatus*bTableY [n];							\
+            const double ac1 = a1 * c1;										\
+            const double bd1 = b1 * d1;										\
+            const double ab_cd1 = (a1 + b1) * (c1 + d1);					\
+            const double a = CHECK_NOT_IND(ac1 - bd1         );				\
+            const double b = CHECK_NOT_IND(ab_cd1 - ac1 - bd1);				\
+            const double c = fin_real[n];									\
+            const double d = fin_imag[n];									\
+            const double ac = a * c;										\
+            const double bd = b * d;										\
+            const double ab_cd = (a + b) * (c + d);							\
+            fout_real[n] = CHECK_NOT_IND(ac - bd        	        );		\
+            fout_imag[n] = CHECK_NOT_IND(ab_cd - ac - bd			);		\
+        }														// end of macro
+        if (isVectorAligned(&aTableX[nLo])
+            && isVectorAligned(&bTableX[nLo])
+            && isVectorAligned(&aTableY[nLo])
+            && isVectorAligned(&bTableY[nLo])
+            && isVectorAligned(&fin_real[nLo])
+            && isVectorAligned(&fin_imag[nLo])
+            && isVectorAligned(&fout_real[nLo])
+            && isVectorAligned(&fout_imag[nLo])
+            ) {
+#pragma vector aligned
+#pragma ivdep
+            LOOP_SHIFT_XY
+        } else {
+#pragma ivdep
+            LOOP_SHIFT_XY
+        }
+#undef LOOP_SHIFT_XY
+    }
+
+    void __declspec(noinline) transformOneTileByShiftX(const int nLo, const int nHi,
+                                   const T1* fin_real, const T1* fin_imag, T2* fout_real, T2* fout_imag,
+                                   const T1* aTableX, const T1* bTableX, int XSize, double Xstatus)
+    {
+		ShiftImageInFourierTransformNew_performanceCounter.count.v++;
+
+		L2CacheModel::seqAcc("fout_real", -1, &fout_real[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fout_imag", -1, &fout_imag[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fin_real", -1, &fin_real[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fin_imag", -1, &fin_imag[nLo], nHi - nLo);
+        
+        assert(0 <= nLo);assert(nHi <= XSize);assert(nLo <= nHi);
+        
+        L2CacheModel::seqAcc("aTable", -1, &aTableX[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("bTable", -1, &bTableX[nLo], nHi - nLo);
+        
+#define LOOP_SHIFT_X \
+        for (int n = nLo; n < nHi; n++) {									\
+            const double a = aTableX [n];									\
+            const double b = Xstatus*bTableX [n];							\
+            const double c = fin_real[n];									\
+            const double d = fin_imag[n];									\
+            const double ac = a * c;										\
+            const double bd = b * d;										\
+            const double ab_cd = (a + b) * (c + d);							\
+            fout_real[n] = CHECK_NOT_IND(ac - bd        	        );		\
+            fout_imag[n] = CHECK_NOT_IND(ab_cd - ac - bd			);		\
+        }														// end of macro
+        
+        if (isVectorAligned(&aTableX[nLo])
+            && isVectorAligned(&bTableX[nLo])
+            && isVectorAligned(&fin_real[nLo])
+            && isVectorAligned(&fin_imag[nLo])
+            && isVectorAligned(&fout_real[nLo])
+            && isVectorAligned(&fout_imag[nLo])
+            ) {
+#pragma vector aligned
+#pragma ivdep
+            LOOP_SHIFT_X
+        } else {
+#pragma ivdep
+            LOOP_SHIFT_X
+        }
+#undef LOOP_SHIFT_X
+    }
+
+    void __declspec(noinline) transformOneTileByShiftY(const int nLo, const int nHi,
+                                   const T1* fin_real, const T1* fin_imag, T2* fout_real, T2* fout_imag,
+                                   const T1* aTableY, const T1* bTableY, int YSize, double Ystatus)
+    {
+		ShiftImageInFourierTransformNew_performanceCounter.count.v++;
+
+		L2CacheModel::seqAcc("fout_real", -1, &fout_real[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fout_imag", -1, &fout_imag[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fin_real", -1, &fin_real[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fin_imag", -1, &fin_imag[nLo], nHi - nLo);
+        
+        assert(0 <= nLo);assert(nHi <= YSize);assert(nLo <= nHi);
+        
+        L2CacheModel::seqAcc("aTable", -1, &aTableY[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("bTable", -1, &bTableY[nLo], nHi - nLo);
+        
+#define LOOP_SHIFT_Y \
+        for (int n = nLo; n < nHi; n++) {									\
+            const double a = aTableY [n];									\
+            const double b = Ystatus*bTableY [n];							\
+            const double c = fin_real[n];									\
+            const double d = fin_imag[n];									\
+            const double ac = a * c;										\
+            const double bd = b * d;										\
+            const double ab_cd = (a + b) * (c + d);							\
+            fout_real[n] = CHECK_NOT_IND(ac - bd        	        );		\
+            fout_imag[n] = CHECK_NOT_IND(ab_cd - ac - bd			);		\
+        }														// end of macro
+        
+        if (   isVectorAligned(&aTableY  [nLo])
+            && isVectorAligned(&bTableY  [nLo])
+            && isVectorAligned(&fin_real [nLo])
+            && isVectorAligned(&fin_imag [nLo])
+            && isVectorAligned(&fout_real[nLo])
+            && isVectorAligned(&fout_imag[nLo])
+            ) {
+#pragma vector aligned
+#pragma ivdep
+            LOOP_SHIFT_Y
+        } else {
+#pragma ivdep
+            LOOP_SHIFT_Y
+        }
+#undef LOOP_SHIFT_Y
+    }
+
+    void __declspec(noinline) transformOneTileByCopy(const int nLo, const int nHi,
+                                const T1* fin_real, const T1* fin_imag, T2* fout_real, T2* fout_imag)
+    {
+		ShiftImageInFourierTransformNew_performanceCounter.count.v++;
+
+		L2CacheModel::seqAcc("fout_real", -1, &fout_real[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fout_imag", -1, &fout_imag[nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fin_real",  -1, &fin_real [nLo], nHi - nLo);
+        L2CacheModel::seqAcc("fin_imag",  -1, &fin_imag [nLo], nHi - nLo);
+        
+#define LOOP_COPY \
+        for (int n = nLo; n < nHi; n++) {									\
+            fout_real[n] = fin_real[n];										\
+            fout_imag[n] = fin_imag[n];										\
+        }														// end of macro
+        
+        if (isVectorAligned(&fin_real[nLo])
+            && isVectorAligned(&fin_imag[nLo])
+            && isVectorAligned(&fout_real[nLo])
+            && isVectorAligned(&fout_imag[nLo])
+            ) {
+#pragma vector aligned
+#pragma ivdep
+            LOOP_COPY
+        } else {
+#pragma ivdep
+            LOOP_COPY
+        }
+#undef LOOP_COPY
+    }
+};
+
+extern IntPerformanceCounter ShiftImageInFourierTransform1_performanceCounter;
+extern IntPerformanceCounter ShiftImageInFourierTransform2_performanceCounter;
+extern IntPerformanceCounter ShiftImageInFourierTransform4_performanceCounter;
+
 template<
 	typename T1,	// some indexable type
 	typename T2>	// some indexable type
 class ShiftImageInFourierTransform {
 protected:
 	const int    inout_size;
-	const double shift_x; 
+	const double shift_x;
 	const double shift_y;
 	const int    ori_size;
 
@@ -706,7 +1077,7 @@ protected:
 	double* aTable2;
 	double* bTable2;
 
-	bool vectorAligned(void const* p) { return (size_t(p) % 64 == 0); }
+	bool isVectorAligned(void const* p) { return (size_t(p) % 64 == 0); }
 
 public:
 	ShiftImageInFourierTransform(
@@ -726,8 +1097,8 @@ public:
 	{
 		assert(inout_Fsize2 == size1 + size2);
 
-		aTable1 = (double*)_mm_malloc(sizeof(double)*size1,64); // new double[size1];
-		bTable1 = (double*)_mm_malloc(sizeof(double)*size1,64); // new double[size1];
+		aTable1 = (double*)aMalloc(sizeof(double)*size1,64); // new double[size1];
+		bTable1 = (double*)aMalloc(sizeof(double)*size1,64); // new double[size1];
 		for (int i = 0; i < inout_Fsize; i++) {
 			const double y = i;
 			for (int j = 0; j < inout_Fsize; j++) {
@@ -747,8 +1118,8 @@ public:
 			}
 		}
 
-		aTable2 = (double*)_mm_malloc(sizeof(double)*size2,64); // new double[size2];
-		bTable2 = (double*)_mm_malloc(sizeof(double)*size2,64); // new double[size2];
+		aTable2 = (double*)aMalloc(sizeof(double)*size2,64); // new double[size2];
+		bTable2 = (double*)aMalloc(sizeof(double)*size2,64); // new double[size2];
 		for (int i = inout_size - 1; i >= inout_Fsize; i--) {
 			const double y = i - inout_size;
 			for (int j = 0; j < inout_Fsize; j++) {
@@ -770,10 +1141,10 @@ public:
 	}
 
 	~ShiftImageInFourierTransform() {
-        if(aTable1) _mm_free(aTable1);
-		if(bTable1) _mm_free(bTable1);
-		if(aTable2) _mm_free(aTable2);
-		if(bTable2) _mm_free(bTable2);
+        if(aTable1) aFree(aTable1);
+		if(bTable1) aFree(bTable1);
+		if(aTable2) aFree(aTable2);
+		if(bTable2) aFree(bTable2);
 	}
     
 	int tileCount() {
@@ -797,6 +1168,8 @@ public:
 	void transformOneTile(
 		const int xLo, const int xHi, 
 		const T1* fin_real, const T1* fin_imag, T2* fout_real, T2* fout_imag) {
+
+		ShiftImageInFourierTransform1_performanceCounter.count.v++;
 
 		assert(0 <= xLo); assert(xHi <= inout_Fsize2);
 		if (justMove) {
@@ -822,12 +1195,12 @@ public:
 			fout_imag[x] = CHECK_NOT_IND(ab_cd - ac - bd			);		\
 		}																	\
 		// end of macro
-		if (vectorAligned(&aTable1[xLo1])
-            && vectorAligned(&bTable1[xLo1])
-            && vectorAligned(&fin_real[xLo1])
-            && vectorAligned(&fin_imag[xLo1])
-            && vectorAligned(&fout_real[xLo1])
-            && vectorAligned(&fout_imag[xLo1])
+		if (isVectorAligned(&aTable1[xLo1])
+            && isVectorAligned(&bTable1[xLo1])
+            && isVectorAligned(&fin_real[xLo1])
+            && isVectorAligned(&fin_imag[xLo1])
+            && isVectorAligned(&fout_real[xLo1])
+            && isVectorAligned(&fout_imag[xLo1])
 			) {
 			#pragma vector aligned
 			#pragma ivdep
@@ -855,12 +1228,12 @@ public:
 			fout_imag[index] = CHECK_NOT_IND(ab_cd - ac - bd	);		\
 		}																\
 		// end of macro
-		if (vectorAligned(&aTable2[indexLo-size1])
-            && vectorAligned(&bTable2[indexLo-size1])
-            && vectorAligned(&fin_real[indexLo])
-            && vectorAligned(&fin_imag[indexLo])
-            && vectorAligned(&fout_real[indexLo])
-            && vectorAligned(&fout_imag[indexLo])
+		if (isVectorAligned(&aTable2[indexLo-size1])
+            && isVectorAligned(&bTable2[indexLo-size1])
+            && isVectorAligned(&fin_real[indexLo])
+            && isVectorAligned(&fin_imag[indexLo])
+            && isVectorAligned(&fout_real[indexLo])
+            && isVectorAligned(&fout_imag[indexLo])
 			) {
 			#pragma vector aligned
 			#pragma ivdep
@@ -896,6 +1269,8 @@ public:
 		const T1* fin1_real, const T1* fin1_imag, T2* fout1_real, T2* fout1_imag
 		) {
 
+		ShiftImageInFourierTransform2_performanceCounter.count.v++;
+
 		assert(0 <= xLo); assert(xHi <= inout_Fsize2);
 
 		if (justMove) {
@@ -928,8 +1303,8 @@ public:
 			M(0) M(1)										\
 		}													\
 		// end of macro
-		if (vectorAligned(fin0_real) && vectorAligned(fin0_imag) && vectorAligned(fout0_real) && vectorAligned(fout0_imag) &&
-		    vectorAligned(fin1_real) && vectorAligned(fin1_imag) && vectorAligned(fout1_real) && vectorAligned(fout1_imag)
+		if (isVectorAligned(fin0_real) && isVectorAligned(fin0_imag) && isVectorAligned(fout0_real) && isVectorAligned(fout0_imag) &&
+		    isVectorAligned(fin1_real) && isVectorAligned(fin1_imag) && isVectorAligned(fout1_real) && isVectorAligned(fout1_imag)
 			) {
 			#pragma vector aligned
 			#pragma ivdep
@@ -961,8 +1336,8 @@ public:
 			M(0) M(1)													\
 		}																\
 		// end of macro
-		if (vectorAligned(fin0_real) && vectorAligned(fin0_imag) && vectorAligned(fout0_real) && vectorAligned(fout0_imag) &&
-		    vectorAligned(fin1_real) && vectorAligned(fin1_imag) && vectorAligned(fout1_real) && vectorAligned(fout1_imag)
+		if (isVectorAligned(fin0_real) && isVectorAligned(fin0_imag) && isVectorAligned(fout0_real) && isVectorAligned(fout0_imag) &&
+		    isVectorAligned(fin1_real) && isVectorAligned(fin1_imag) && isVectorAligned(fout1_real) && isVectorAligned(fout1_imag)
 			) {
 			#pragma vector aligned
 			#pragma ivdep
@@ -1010,6 +1385,8 @@ public:
 		) {
 		assert(0 <= xLo); assert(xHi <= inout_Fsize2);
 
+		ShiftImageInFourierTransform4_performanceCounter.count.v++;
+
 		if (justMove) {
 			for (int x = xLo; x < xHi; x++) {
 #define M(N) \
@@ -1041,10 +1418,10 @@ public:
 				M(0) M(1) M(2) M(3)							\
 			}												\
 			// end of macro
-		if (   vectorAligned( fin0_real) && vectorAligned( fin1_real) && vectorAligned( fin2_real) && vectorAligned( fin3_real)
-			&& vectorAligned( fin0_imag) && vectorAligned( fin1_imag) && vectorAligned( fin2_imag) && vectorAligned( fin3_imag)
-			&& vectorAligned(fout0_real) && vectorAligned(fout1_real) && vectorAligned(fout2_real) && vectorAligned(fout3_real)
-			&& vectorAligned(fout0_imag) && vectorAligned(fout1_imag) && vectorAligned(fout2_imag) && vectorAligned(fout3_imag)
+		if (   isVectorAligned( fin0_real) && isVectorAligned( fin1_real) && isVectorAligned( fin2_real) && isVectorAligned( fin3_real)
+			&& isVectorAligned( fin0_imag) && isVectorAligned( fin1_imag) && isVectorAligned( fin2_imag) && isVectorAligned( fin3_imag)
+			&& isVectorAligned(fout0_real) && isVectorAligned(fout1_real) && isVectorAligned(fout2_real) && isVectorAligned(fout3_real)
+			&& isVectorAligned(fout0_imag) && isVectorAligned(fout1_imag) && isVectorAligned(fout2_imag) && isVectorAligned(fout3_imag)
 			) {
 			#pragma vector aligned
 			#pragma ivdep
@@ -1078,10 +1455,10 @@ public:
 		}																\
 		// end of macro
 
-		if (   vectorAligned( fin0_real) && vectorAligned( fin1_real) && vectorAligned( fin2_real) && vectorAligned( fin3_real)
-			&& vectorAligned( fin0_imag) && vectorAligned( fin1_imag) && vectorAligned( fin2_imag) && vectorAligned( fin3_imag)
-			&& vectorAligned(fout0_real) && vectorAligned(fout1_real) && vectorAligned(fout2_real) && vectorAligned(fout3_real)
-			&& vectorAligned(fout0_imag) && vectorAligned(fout1_imag) && vectorAligned(fout2_imag) && vectorAligned(fout3_imag)
+		if (   isVectorAligned( fin0_real) && isVectorAligned( fin1_real) && isVectorAligned( fin2_real) && isVectorAligned( fin3_real)
+			&& isVectorAligned( fin0_imag) && isVectorAligned( fin1_imag) && isVectorAligned( fin2_imag) && isVectorAligned( fin3_imag)
+			&& isVectorAligned(fout0_real) && isVectorAligned(fout1_real) && isVectorAligned(fout2_real) && isVectorAligned(fout3_real)
+			&& isVectorAligned(fout0_imag) && isVectorAligned(fout1_imag) && isVectorAligned(fout2_imag) && isVectorAligned(fout3_imag)
 			) {
 			#pragma vector aligned
 			#pragma ivdep
@@ -1095,11 +1472,15 @@ public:
 	}
 };
 
+
+extern IntPerformanceCounter ShiftImageInFourierTransformSimple_performanceCounter;
+
 template<typename T1,typename T2>
 void shiftImageInFourierTransform(const T1& fin_real,const T1& fin_imag,T2& fout_real,T2& fout_imag,int inout_size,
                                   double shift_x,double shift_y,int ori_size)
 {
-    
+	ShiftImageInFourierTransformSimple_performanceCounter.count.v++;
+
     static int nr_element = 5000;
     static double tabulated_sin[5000];
     static double tabulated_cos[5000];

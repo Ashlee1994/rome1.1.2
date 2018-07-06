@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Yong Bei Ma(galowma@gmail.com)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,6 +27,7 @@
 #include <cmath>
 #include <iostream>
 #include <cstring> /*memcpy*/
+#include "mkl.h"
 
 #include "macros.h"
 
@@ -35,57 +39,94 @@
 //#define USEMPI
 
 #ifdef USEMPI
+#include "./util_heap_undefs.h"
 #include <mpi.h>
+#include "./util_heap_defs.h"
 #endif
+
 
 #ifdef USEMPI
 
-#define MPI_INITIALIZE(argc, argv) MPI_Init(argc, argv)
+#define MPI_INITIALIZE(argc, argv) MPI::Init(argc, argv);
 #define MPI_FINALIZE MPI_Finalize()
 
 inline int mpiRank() {
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    return rank;
+    return MPI::COMM_WORLD.Get_rank();
 }
 
 inline int mpiSize() {
-    int size;
-    MPI_Comm_size(MPI_COMM_WORLD, &size);
-    return size;
+    return MPI::COMM_WORLD.Get_size();
 }
 
 #define MPI_IS_ROOT (mpiRank() == 0)
 #define MPI_LOG if (MPI_IS_ROOT) std::cout
-#define NODE0ONLY if (0 == node)
-#define MASTERNODE if (0 == MPI::COMM_WORLD.Get_rank()) // when not define node
 
 #else // USEMPI
 
 #define MPI_INITIALIZE(argc, argv)
 #define MPI_FINALIZE
+#define MPI_IS_ROOT true
 #define MPI_LOG std::cout
-#define NODE0ONLY
-#define MASTERNODE
 
 #endif // USEMPI
 
+#ifdef USEMPI
+#define NODEONLY(__node,__flag) if(__flag == __node)
+#define NODE0ONLY NODEONLY(node,0)
+#define MASTERNODE if (0 == MPI::COMM_WORLD.Get_rank()) // when not define node
+#else
+#define NODEONLY(__node,__flag) if(true)
+#define NODE0ONLY NODEONLY(node,0)
+#define MASTERNODE
+#endif
+
 // Support compile-time checking of the MPI code
 //
-//#define FAKEMPI
+#ifndef USEMPI
+#define FAKEMPI
+#endif
 
 #ifdef FAKEMPI
-#define USEMPI UsingFakeMPI
+//#define USEMPI UsingFakeMPI
 static const int MPI_MAX_PROCESSOR_NAME = 256;
 namespace MPI {
-    enum E {DOUBLE,FLOAT,SUM};
-    class COMM_WORLD_CLASS {
+    //
+    static void Init() {}
+    static void Finalize() {}
+    static void Get_processor_name(char*,int) {}
+    //
+    class Datatype {
+    public:
+		static Datatype Create_contiguous(int) { Datatype c; return c; }
+        void Commit() {}
+        void Free() {}
+		int Get_size() const { return 0; }
+		bool operator==(Datatype&) const { return false; }
+    };
+    extern Datatype DOUBLE,FLOAT,INT,BOOL;
+    //
+    class User_function;
+    class Op {
+    public:
+        void Init(User_function*, bool) {}
+        void Free() {}
+    };
+    extern Op SUM;
+    class Intracomm {
     public:
         static void Barrier() {}
-        static void Bcast(void*, int, E, int) {}
-        static void Reduce(void*, void*, int, E, E, int) {}
-        static void Allreduce(void*, void*, int, E, E) {}
-    } COMM_WORLD;
+        static void Bcast(void*, int, Datatype, int) {}
+        static void Send(const void*, int, Datatype, int, int) {}
+        static void Recv(void*, int, Datatype, int, int) {}
+        static void Reduce(void*, void*, int, Datatype, Op, int) {}
+        static void Allreduce(void*, void*, int, Datatype, Op) {}
+        static void Gatherv(void*, int, Datatype, void*, int*, int*, Datatype, int) {}
+        static void Reduce_scatter(void*, void*, int*, Datatype, Op) {}
+		static Intracomm Split(int, int) { Intracomm i; return i; }
+        int Get_size() {return 1;}
+        int Get_rank() {return 0;}
+    };
+    extern Intracomm COMM_WORLD;
 };
 #endif
 

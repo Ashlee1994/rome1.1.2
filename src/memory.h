@@ -23,45 +23,25 @@
 #ifndef MEMORY_H_
 #define MEMORY_H_
 
-#include <cstddef> /* NULL size_t*/
-#include <cassert>
-#include <cstring> /* memset */
-// Census support
-//
-size_t census();
-void showPopulation();
+#include "./util.h"
 
-void censusWkr(void* p, const char* file, size_t line, bool died);
+#ifdef _WIN32 // Bevin is using windows for alloc data
+#define _wrapped_aligned_malloc(s,a) _aligned_malloc(s,a)
+#define _wrapped_aligned_free(p) _aligned_free(p)
+#else
+#define _wrapped_aligned_malloc(s,a) _mm_malloc(s,a)
+#define _wrapped_aligned_free(p) _mm_free(p)
+#endif
 
-template<typename T>
-T* bornTemplate(T* p, const char* file, size_t line) {
-    censusWkr(p, file, line, false);
-    return p;
-}
-#define born(p) bornTemplate(p,__FILE__,__LINE__)
-
-template<typename T>
-T* diedTemplate(T* p, const char* file, size_t line) {
-    censusWkr(p, file, line, true);
-    return p;
-}
-#define died(p) diedTemplate(p, __FILE__,__LINE__)
-
-
-// Heap support
+ // Heap support
 //
 template<typename T>
 T* mallocCacheAlignedTemplate(size_t len, const char* file, size_t line) {
-    return bornTemplate((T*)_mm_malloc(sizeof(T)*len, 64), file, line);
+	auto size = sizeof(T)*len;
+    return (T*)aMallocWkr(size, 64, file, int(line));
 }
 #define mallocCacheAligned(T,L) mallocCacheAlignedTemplate<T>(L, __FILE__, __LINE__)
 
-
-template<typename T>
-void freeCacheAligned(T*&p) {
-    _mm_free(died(p));
-    p = NULL;
-}
 
 namespace Heap {
     template <class ScalarType>
@@ -80,7 +60,7 @@ namespace Heap {
     }
     template <class ScalarType>
     void freeScalars(ScalarType* & p) {
-        freeCacheAligned(p); p = NULL;
+        aFree(p); p = NULL;
     }
     static auto allocChars = allocScalars < char > ;
     static auto allocFloats = allocScalars < float > ;
@@ -112,14 +92,14 @@ namespace Heap {
 #endif
 //
 static void *
-allocMemory(size_t __size, size_t __align,bool __inHBM = false)
+allocMemory(size_t __size, size_t __align,bool __inHBM, const char* file, int line)
 {
     void *__mallocedMemory;
 #ifdef USEMCDRAM
     if (__inHBM) int ret = hbw_posix_memalign((void**) &__mallocedMemory, 64, __size);
-    else __mallocedMemory = (void*)_mm_malloc(__size, __align);
+    else __mallocedMemory = (void*)aMallocWkr(__size, __align, file, line);
 #else
-    __mallocedMemory = (void*)_mm_malloc(__size, __align);
+    __mallocedMemory = (void*)aMallocWkr(__size, __align, file, line);
 #endif
     return __mallocedMemory;
 }
@@ -129,10 +109,73 @@ freeMemory(void *__p,bool __inHBM = false)
 {
 #ifdef USEMCDRAM
     if (__inHBM) hbw_free(__p);
-    else _mm_free(__p);
+    else aFree(__p);
 #else
-    _mm_free(__p);
+    aFree(__p);
 #endif
 }
+
+
+// L2 cache modelling is used to try to understand our L2 miss rates in production runs without distort performance
+//
+namespace L2CacheModel {
+
+#define L2_ACCESS_ELTS \
+	ELT(const char* , nameBase	) SEP \
+	ELT(int			, nameIndex	) SEP \
+	ELT(void*		, start		) SEP \
+	ELT(size_t		, amount	) SEP \
+	ELT(size_t		, count		) SEP \
+	ELT(size_t		, stride	) \
+	// end of macro
+
+	class Interval {
+		class Impl;
+		Impl* _impl;
+	public:
+		Interval() : _impl(nullptr) {}
+		~Interval() { if (_impl) end(); }
+		void begin();
+		void end() { if (_impl) endWkr(); }
+		size_t accessesRecordedCount();
+		size_t cacheProbeCount();
+		float hitRate();
+		bool showL2CacheIntervalLocked(Life* life) {
+			bool result;
+			#pragma omp critical 
+			result = showL2CacheIntervalUnlocked(life);
+			return result;
+		}
+		bool showL2CacheIntervalUnlocked(Life* life);
+		// returns true if a good hit rate
+	private:
+		void endWkr();
+		bool showL2CacheInterval(std::ostream & os, Life* life);
+	};
+
+//#define L2_CACHE_MODELING
+#ifndef L2_CACHE_MODELING
+	static
+#endif
+	void seqAccWkr(
+#define SEP			,
+#define ELT(T,N)	T N
+		L2_ACCESS_ELTS
+#undef ELT
+#undef SEP
+	)
+#ifdef L2_CACHE_MODELING
+		;
+#else
+	{}
+#endif
+
+	template <typename Elt>
+	void seqAcc(const char* nameBase, int nameIndex, Elt* start, size_t count = 1, size_t stride = 1) {
+		seqAccWkr(nameBase, nameIndex, (void*)start, sizeof(Elt), count, sizeof(Elt));
+	}
+
+};
+
 
 #endif /* defined(MEMORY_H_) */

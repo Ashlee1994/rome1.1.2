@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Yong Bei Ma(galowma@gmail.com)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,8 +21,17 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "mpi.h"
-#include <algorithm>
+
+#ifdef FAKEMPI
+namespace MPI {
+    Datatype DOUBLE,FLOAT,INT,BOOL;
+    Op SUM;
+	Intracomm COMM_WORLD;
+};
+#endif
 
 // Divides a number into most equally groups
 int divide_equally(int N, int size, int rank,int &first,int &last)

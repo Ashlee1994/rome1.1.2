@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Yong Bei Ma(galowma@gmail.com) Bevin R Brett(bevin_brett@hotmail.com)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,16 +21,11 @@
  * author citations must be preserved.
  ***************************************************************************/
 
-#ifndef _OPTION_H_
-#define _OPTION_H_
+#ifndef OPTION_H_
+#define OPTION_H_
 
-#include <iostream>
-#include <string>
-#include <map>
-#include <iomanip>
-#include <vector>
-#include <algorithm>
-
+#include "util.h"
+#include "mpi.h"
 #include "error.h"
 #include "string.h"
 
@@ -43,17 +41,18 @@ private:
     } Elem;
     std::vector<Elem> AllOptions;
     //
-    int keyLength,commentLength;
+    size_t maxKeyLength,maxCommentLength;
     
 public:
-    Option(){keyLength = 0;commentLength = 0;}
-    ~Option(){IOParser.clear();AllOptions.clear();}
+	Option() : maxKeyLength(0), maxCommentLength(0) {}
+    ~Option() { IOParser.clear(); AllOptions.clear(); }
     
     // add all options
 	static std::string unspecified() { return "<unspecified>"; }
     void addOption(std::string key,std::string commit,std::string default_value = unspecified());
     // read command line
     void readCommandLine(int argc, char * argv[]);
+	void readIncludeFile(std::string fnm);
     
     // read option
     std::string getOption(std::string key);
@@ -66,6 +65,8 @@ public:
     void printValue();
     //
     void printHelp();
+private:
+	int readArg(const char* arg0, const char* arg1);
 };
 
 #endif

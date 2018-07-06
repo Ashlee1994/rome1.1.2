@@ -48,19 +48,21 @@ public:
     ELTONE(double   , width_mask_edge	            , 0         , 1                         , 9   ) SEP \
     /* Minimum resolution to perform Bayesian estimates of the model */									\
     ELTONE(int	    , minres_map            		, 0         , 1                         , 10  ) SEP \
+    /* How many fourier shells should be included beyond the highest shell where evidenceVsPriorRatio < 1? */ \
+    ELTONE(int 		, incr_size						, 10		, 1							, 11  )	SEP \
     /* Flag whether to use maximum a posteriori (MAP) estimation */										\
-    ELTONE(bool	    , do_map            			, 0         , 1                         , 11  ) SEP \
-    ELTONE(bool	    , do_gridding            		, 0         , 1                         , 12  ) SEP \
+    ELTONE(bool	    , do_map            			, 0         , 1                         , 12  ) SEP \
+    ELTONE(bool	    , do_gridding            		, 0         , 1                         , 13  ) SEP \
     /* Original reference */																			\
-    ELTVEC(Vol<FDOUBLE>, Irefs            			, 0         , 1                         , 13  ) SEP \
+    ELTVEC(Vol<FDOUBLE>, Irefs            			, 0         , 1                         , 14  ) SEP \
     /* Symmetry group */																				\
-    ELTONE(std::string, fn_sym            			, "C1"      , 1                         , 14  ) SEP \
+    ELTONE(std::string, fn_sym            			, "C1"      , 1                         , 15  ) SEP \
     /* projector and back-projector for references(2D or 3D) */                                         \
-    ELTVEC(MyProjector, projector            		, 0         , 1                         , 15  ) SEP \
-    ELTVEC(MyBackProjector, backprojector           , 0         , 1                         , 16  ) SEP \
-    ELTONE(int	    , nr_threads            		, 0         , 1                         , 17  ) SEP \
-    ELTVEC(Vol<MKL_Complex>, thread_data          	, 0         , 1                         , 18  ) SEP \
-    ELTVEC(Vol<FDOUBLE>, thread_weight            	, 0         , 1                         , 19  ) // end of macro
+    ELTVEC(MyProjector, projector            		, 0         , 1                         , 16  ) SEP \
+    ELTVEC(MyBackProjector, backprojector           , 0         , 1                         , 17  ) SEP \
+    ELTONE(int	    , nr_threads            		, 0         , 1                         , 18  ) SEP \
+    ELTVEC(Vol<MKL_Complex>, thread_data          	, 0         , 1                         , 19  ) SEP \
+    ELTVEC(Vol<FDOUBLE>, thread_weight            	, 0         , 1                         , 20  ) // end of macro
 
 #define SEP
 #define ELTONE(T,N,V,S,I) T N;
@@ -69,9 +71,9 @@ public:
 #undef ELTONE
 #undef ELTVEC
 #undef SEP
-    
-    Mrcs::MrcsHead refHead;
     //
+    Mrcs::MrcsHead refHead;
+    
     MAPModel(){
 #define SEP
 #define ELTONE(T,N,V,S,I) N = V;
@@ -96,7 +98,8 @@ public:
     }
     
     static inline double getResolution(int ipix,double pixel_size,double ori_size)	{ return (double)ipix/(pixel_size * ori_size); }
-    static inline int getPixelFromResolution(double resol,double pixel_size,double ori_size)	{ return (int)(resol * pixel_size * ori_size + 0.0001); }
+    // maybe cause some round error,like resol * pixel_size * ori_size=4.99999999,be careful
+    static inline int getPixelFromResolution(double resol,double pixel_size,double ori_size)	{ return (int)(resol * pixel_size * ori_size+0.0001); }
     
     //
     void initialize(int _nr_classes,int _ori_size,double _particle_diameter,
@@ -120,14 +123,19 @@ public:
     
     // get 2D slice form 3D map
     void get2DFourierTransformOneTile(int iclass,FDOUBLE* img_out_real, FDOUBLE* img_out_imag,
-                                      int n_start,int n_end,int img_out_size,const FDOUBLE A[][3], bool inv);
+                                      int n_start,int n_end,int img_out_size,const FDOUBLE A[][3],
+                                      const int* nIndex = nullptr);
     
-    //
+    // set 2D slice to 3D map
     void set2DFourierTransform(int thread,int iclass,const FDOUBLE* img_in_real,const FDOUBLE* img_in_imag,int img_in_size,
                                const FDOUBLE A[][3], bool inv,const FDOUBLE* Mweight = NULL);
     
+    // set 2D slice to 3D map
+    void set2DFourierTransformOneTile(int thread,const FDOUBLE* img_in_real,const FDOUBLE* img_in_imag,int n_start,
+                                      int n_end,int img_in_size,const FDOUBLE A[][3],const FDOUBLE* Mweight,const int* nIndex);
+    
     //
-    void reduceThreadMap();
+    void reduceThreadMap(int iclass);
     
     //
     void reconstruction(int iclass,int max_iter_preweight,bool do_map,double tau2_fudge,FDOUBLE* tau2,FDOUBLE* sigma2,FDOUBLE* data_vs_prior,
@@ -141,24 +149,24 @@ public:
     void applyLowPassFilter();
     
     // Apply a solvent flattening to all map
-    void applySolventFlatten();
+    void applySolventFlatten(std::string fn_mask);
     
     // Updates the current resolution (from data_vs_prior array) and keeps track of best resolution thus far
     // and precalculates a 2D Fourier-space array with pointers to the resolution of each point in a FFTW-centered array
-    void updateCurrentResolution(std::vector<VectorOfFDOUBLE>& data_vs_prior_class,bool set_by_ini_high);
+    void updateCurrentResolution(std::vector<VectorOfFDOUBLE>& data_vs_prior_class,bool set_by_ini_high,int& nr_iter_wo_resol_gain);
     
     //
-    void printResolution(std::vector<VectorOfFDOUBLE>& data_vs_prior_class,bool set_by_ini_high);
+    void printResolution(std::vector<VectorOfFDOUBLE>& data_vs_prior_class,bool set_by_ini_high,bool debug_flag = false);
     
     // Update the current and coarse image size
     // and precalculates a 2D Fourier-space array with pointers to the resolution of each point in a FFTW-centered array
     void updateImageSizeAndResolutionPointers(VectorOfInt& Npix_per_shell,VectorOfInt& Mresol_coarse,VectorOfInt& Mresol_fine,
                                               int& coarse_size,int& current_size,
-                                              int adaptive_oversampling,double angularSampling,
-                                              FDOUBLE model_ave_Pmax,bool has_high_fsc_at_limit = false);
+                                              int adaptive_oversampling,double angularSampling,FDOUBLE model_ave_Pmax,
+                                              bool has_high_fsc_at_limit = false,bool do_use_all_data = false,bool debug_flag = false);
     
     // reduce Fourier-space sampling data to each node
-    void reduceData(bool use_allreduce = true);
+    void reduceData(const MPI::Intracomm& currentWorld,bool use_allreduce = true);
     
     // broadcast Volume data to each nodes
     void broadcastData();

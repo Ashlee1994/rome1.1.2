@@ -18,6 +18,8 @@
  * author citations must be preserved.
  ***************************************************************************/
 
+#include "util.h"		// used for building precompiled headers on Windows
+
 #include "mrcs.h"
 
 namespace Mrcs {
@@ -35,7 +37,7 @@ namespace Mrcs {
         
         inFile.close();
     }
-
+    
     // read MrcHead from *.mrc
     bool readMrcHead(std::string fn_mrc,MrcsHead& refHead,int size){
         FILE* refFile = fopen((fn_mrc).c_str(),"rb");
@@ -67,7 +69,6 @@ namespace Mrcs {
         refHead.NC = refHead.NR = refHead.NS = size;
         refHead.MODE = 2;
         refHead.NX = refHead.NY = refHead.NZ = size;
-        refHead.NSYMBT = 0;
         refHead.Alpha = refHead.Beta = refHead.Gamma = 90;
         refHead.MAPC = 1;refHead.MAPR = 2;refHead.MAPS = 3;
         refHead.X_length = refHead.Y_length = refHead.Z_length = anpix*size;

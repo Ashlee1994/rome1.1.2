@@ -21,8 +21,8 @@
  * author citations must be preserved.
  ***************************************************************************/
 
-#include "../mpi.h"
-#include "../time.h"
+#include "mpi.h"
+#include "time.h"
 
 #include "res_fft.h"
 #include "res_filter.h"

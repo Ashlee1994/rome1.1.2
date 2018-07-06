@@ -27,23 +27,23 @@
 #include "../src/string.h"
 
 template<typename T>
-T* alignedMalloc(size_t size,int align){return (T*)_mm_malloc(sizeof(T)*size,align);}
+T* alignedMalloc(size_t size,int align){return (T*)aMalloc(sizeof(T)*size,align);}
 template<typename T>
-void alignedFree(T* &ptr){_mm_free(ptr);}
+void alignedFree(T* &ptr){aFree(ptr);}
 
 /*** define some functionality module ***/
 
 // write class average
 void writeClassAverage(std::string fn_star,std::string fn_mrcs,int K,double pixel_size,double AverageBeta,double AverageAlpha)
 {
-    //std::string mrcs_dir = fn_star.substr(0,fn_star.find_last_of("/")+1);
+    std::string mrcs_dir = fn_star.substr(0,fn_star.find_last_of("/")+1);
 
     MetaDataTable metadata;
     metadata.readFromStar(fn_star);
     
     int N = metadata.numberOfParticles();
     Mrcs::MrcsHead mrcshead;
-    Mrcs::readMrcsHead(/*mrcs_dir+*/metadata[0].IMAGE.NAME, mrcshead);
+    Mrcs::readMrcsHead(mrcs_dir+metadata[0].IMAGE.NAME, mrcshead);
     int ori_size = mrcshead.NC;
     int D = ori_size*(ori_size/2+1);
     // prepare data
@@ -60,7 +60,7 @@ void writeClassAverage(std::string fn_star,std::string fn_mrcs,int K,double pixe
     // read image one by one
     for (size_t n = 0; n < N; n++) {
         
-        FILE* filehandle = fopen((/*mrcs_dir+*/metadata[n].IMAGE.NAME).c_str(),"rb");
+        FILE* filehandle = fopen((mrcs_dir+metadata[n].IMAGE.NAME).c_str(),"rb");
         
         // change type to int may cause bug,avoid offset out of range
         long image_id = metadata[n].IMAGE.INDEX;
@@ -71,7 +71,7 @@ void writeClassAverage(std::string fn_star,std::string fn_mrcs,int K,double pixe
         
         if(fread((char*)(buffer),ori_size*ori_size*sizeof(float),1,filehandle) == NULL){
             std::cerr<<"read file failed."<<std::endl;
-            exit(EXIT_FAILURE);
+            EXIT_ABNORMALLY;
         }
         
         Spider::RT_SF(buffer, buffer2, ori_size, ori_size, 0, metadata[n].XOFF, metadata[n].YOFF);
@@ -199,7 +199,7 @@ void convertDatToMrcs(std::string fn_dat,std::string fn_mrcs)
 void selectImages(std::string fn_star,std::string fn_out)
 {
 
-    // std::string mrcs_dir = fn_star.substr(0,fn_star.find_last_of("/")+1);
+    std::string mrcs_dir = fn_star.substr(0,fn_star.find_last_of("/")+1);
     
     // read star file
     MetaDataTable metadata;
@@ -207,7 +207,7 @@ void selectImages(std::string fn_star,std::string fn_out)
     
     // read mrcs head
     Mrcs::MrcsHead mrcsHead;
-    readMrcsHead(/*mrcs_dir+*/metadata[0].IMAGE.NAME, mrcsHead);
+    readMrcsHead(mrcs_dir+metadata[0].IMAGE.NAME, mrcsHead);
     size_t N = metadata.numberOfParticles();
     int ori_size = mrcsHead.NC;
 
@@ -215,7 +215,7 @@ void selectImages(std::string fn_star,std::string fn_out)
     // read image one by one
     for (size_t n = 0; n < N; n++) {
         
-        FILE* filehandle = fopen((/*mrcs_dir+*/metadata[n].IMAGE.NAME).c_str(),"rb");
+        FILE* filehandle = fopen((mrcs_dir+metadata[n].IMAGE.NAME).c_str(),"rb");
         
         // change type to int may cause bug,avoid offset out of range
         long image_id = metadata[n].IMAGE.INDEX;
@@ -229,7 +229,7 @@ void selectImages(std::string fn_star,std::string fn_out)
         
         if(fread((char*)(selectImageData+n*ori_size*ori_size),ori_size*ori_size*sizeof(float),1,filehandle) == NULL){
             std::cerr<<"read file failed."<<std::endl;
-            exit(EXIT_FAILURE);
+            EXIT_ABNORMALLY;
         }
         
         fclose(filehandle);
@@ -247,14 +247,14 @@ void selectImages(std::string fn_star,std::string fn_out)
 void adjustImages(std::string fn_star,std::string fn_out)
 {
     
-    // std::string mrcs_dir = fn_star.substr(0,fn_star.find_last_of("/")+1);
+    std::string mrcs_dir = fn_star.substr(0,fn_star.find_last_of("/")+1);
     
     // read star file
     MetaDataTable metadata;
     metadata.readFromStar(fn_star);
     // read mrcs head
     Mrcs::MrcsHead mrcsHead;
-    readMrcsHead(/*mrcs_dir+*/metadata[0].IMAGE.NAME, mrcsHead);
+    readMrcsHead(mrcs_dir+metadata[0].IMAGE.NAME, mrcsHead);
     int ori_size = mrcsHead.NC;
     int N = metadata.numberOfParticles();
 
@@ -263,7 +263,7 @@ void adjustImages(std::string fn_star,std::string fn_out)
     // read image one by one
     for (size_t n = 0; n < N; n++) {
         
-        FILE* filehandle = fopen((/*mrcs_dir+*/metadata[n].IMAGE.NAME).c_str(),"rb");
+        FILE* filehandle = fopen((mrcs_dir+metadata[n].IMAGE.NAME).c_str(),"rb");
         
         // change type to int may cause bug,avoid offset out of range
         long image_id = metadata[n].IMAGE.INDEX;
@@ -277,7 +277,7 @@ void adjustImages(std::string fn_star,std::string fn_out)
         
         if(fread((char*)(selectImageData+n*ori_size*ori_size),ori_size*ori_size*sizeof(float),1,filehandle) == NULL){
             std::cerr<<"read file failed."<<std::endl;
-            exit(EXIT_FAILURE);
+            EXIT_ABNORMALLY;
         }
         
         fclose(filehandle);
@@ -334,7 +334,7 @@ void cleanEmptyClass(std::string fn_in,std::string fn_out)
     // set the new data
     std::vector<MetaDataElem> metaDataElems(metaDataTable.numberOfParticles());
     int particleIndex = 0;
-    float* nonEmptyClassAverage = (float*)_mm_malloc(sizeof(float)*nonEmptyClassNumber*image_size*image_size,64);
+    float* nonEmptyClassAverage = (float*)aMalloc(sizeof(float)*nonEmptyClassNumber*image_size*image_size,64);
     int nonEmptyClassIndex = 0;
 	//
     float buffer[image_size*image_size];
@@ -384,15 +384,15 @@ void otherModules(){
     int ori_size = 256;
     
     std::cout<<"read data1."<<std::endl;
-    MyMetaData* metadata1 = (MyMetaData*)_mm_malloc(sizeof(MyMetaData)*nr_global_images,64);
+    MyMetaData* metadata1 = (MyMetaData*)aMalloc(sizeof(MyMetaData)*nr_global_images,64);
     std::vector<std::string> metadata_fn1;
     std::string star_fn1="../../fc_sub/sub2.star";
     
     readStarData(star_fn1,metadata1,metadata_fn1,nr_global_images);
     
-    float *buffer = (float*)_mm_malloc(sizeof(float)*ori_size*ori_size,64);
+    float *buffer = (float*)aMalloc(sizeof(float)*ori_size*ori_size,64);
     
-    float* data1 = (float*)_mm_malloc(sizeof(float)*nr_global_images*ori_size*ori_size,64);
+    float* data1 = (float*)aMalloc(sizeof(float)*nr_global_images*ori_size*ori_size,64);
     for (int n = 0; n < nr_global_images; n++) {
         
         FILE* filehandle = fopen((mrcs_dir+metadata_fn1[n]).c_str(),"rb");
@@ -405,7 +405,7 @@ void otherModules(){
         
         if(fread((char*)buffer,ori_size*ori_size*sizeof(float),1,filehandle) == NULL){
             std::cerr<<"read file failed."<<std::endl;
-            exit(EXIT_FAILURE);
+            EXIT_ABNORMALLY;
         }
         
         memcpy(data1+n*ori_size*ori_size,buffer,sizeof(float)*ori_size*ori_size);
@@ -414,13 +414,13 @@ void otherModules(){
     }
     
     std::cout<<"read data2."<<std::endl;
-    MyMetaData* metadata2 = (MyMetaData*)_mm_malloc(sizeof(MyMetaData)*nr_global_images,64);
+    MyMetaData* metadata2 = (MyMetaData*)aMalloc(sizeof(MyMetaData)*nr_global_images,64);
     std::vector<std::string> metadata_fn2;
     std::string star_fn2="../../fc_sub/unfil2.star";
     
     readStarData(star_fn2,metadata2,metadata_fn2,nr_global_images);
     
-    float* data2 = (float*)_mm_malloc(sizeof(float)*nr_global_images*ori_size*ori_size,64);
+    float* data2 = (float*)aMalloc(sizeof(float)*nr_global_images*ori_size*ori_size,64);
     
     for (int n = 0; n < nr_global_images; n++) {
         
@@ -434,7 +434,7 @@ void otherModules(){
         
         if(fread((char*)buffer,ori_size*ori_size*sizeof(float),1,filehandle) == NULL){
             std::cerr<<"read file failed."<<std::endl;
-            exit(EXIT_FAILURE);
+            EXIT_ABNORMALLY;
         }
         
         memcpy(data2+n*ori_size*ori_size,buffer,sizeof(float)*ori_size*ori_size);
@@ -469,7 +469,7 @@ int main(int argc, char * argv[])
         std::cout<<"-clean        : clean the empty class."<<std::endl;
         std::cout<<"for each functionality,using -help to see how to use,"<<std::endl;
         std::cout<<"example : rome_tool -classaverage -help."<<std::endl;
-        exit(1);
+        EXIT_ABNORMALLY;
     }
     // write classaverage
     if (std::string(argv[1]) == "-classaverage")
@@ -484,7 +484,7 @@ int main(int argc, char * argv[])
         if (argc < 4) {
             std::cout<<"rome_tool -classaverage usage : "<<std::endl;
             option.printHelp();
-            exit(1);
+            EXIT_ABNORMALLY;
         }
 
         // remove the first argument and read the remaining argv
@@ -510,7 +510,7 @@ int main(int argc, char * argv[])
         if (argc < 4) {
             std::cout<<"rome_tool -convert usage : "<<std::endl;
             option.printHelp();
-            exit(1);
+            EXIT_ABNORMALLY;
         }
         
         // remove the first argument and read the remaining argv
@@ -543,7 +543,7 @@ int main(int argc, char * argv[])
         if (argc < 4){
             std::cout<<"rome_tool -select usage : "<<std::endl;
             option.printHelp();
-            exit(1);
+            EXIT_ABNORMALLY;
         }
         // remove the first argument and read the remaining argv
         option.readCommandLine(argc-1, argv+1);
@@ -561,7 +561,7 @@ int main(int argc, char * argv[])
         if (argc < 4){
             std::cout<<"rome_tool -adjust usage : "<<std::endl;
             option.printHelp();
-            exit(1);
+            EXIT_ABNORMALLY;
         }
         // remove the first argument and read the remaining argv
         option.readCommandLine(argc-1, argv+1);
@@ -580,7 +580,7 @@ int main(int argc, char * argv[])
         if (argc < 4){
             std::cout<<"rome_tool -filter usage : "<<std::endl;
             option.printHelp();
-            exit(1);
+            EXIT_ABNORMALLY;
         }
         // remove the first argument and read the remaining argv
         option.readCommandLine(argc-1, argv+1);
@@ -600,7 +600,7 @@ int main(int argc, char * argv[])
         if (argc < 4){
             std::cout<<"rome_tool -clean usage : "<<std::endl;
             option.printHelp();
-            exit(1);
+            EXIT_ABNORMALLY;
         }
         // remove the first argument and read the remaining argv
         option.readCommandLine(argc-1, argv+1);

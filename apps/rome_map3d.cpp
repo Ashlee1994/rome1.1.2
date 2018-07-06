@@ -17,29 +17,41 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
-#include <cstdio>
-#include <iostream>
 
+#include "../src/util.h"		// used for building precompiled headers on Windows
+
+#include "../src/checker.h"
+#include "../src/exp_model.h"
+#include "../src/findBestPoints.h"
 #include "../src/map_model.h"
-#include "../src/time.h"
-#include "../src/option.h"
 #include "../src/map3d_optimizer.h"
+#include "../src/map3d_optimizer_new.h"
+#include "../src/map3d_optimizer_kernel.h"
+#include "../src/option.h"
+
+#include "../src/map3d_optimizer_new.h"
+#define Map3dOptimizer Map3dOptimizer_new
+
+//#include "../src/map3d_autorefinement.h"
+//#define Map3dOptimizer Map3dAutoRefinement
 
 int main(int argc, char * argv[]) {
-        
     Option option;
-    // general option
-    option.addOption("-i",                  "Input metadata file with images needed to align"                                                                       );
+	// 
+	option.addOption("-@",                  "Read the options, one per line, from the specified file",                                                        "NULL");
+	// general option
+    option.addOption("-i",                  "Input metadata file with images needed to align",                                                                "NULL");
+    option.addOption("-continue",        	"continue work from specified file.( from *_optimiser.star or *_backup.back file)",    						   	  "NULL");
     option.addOption("-o",                  "Output metadata"                                                                                                       );
     option.addOption("-ref",                "3d reference file name(*.mrc)"                                                                                         );
     option.addOption("-particle_diameter",  "Particle_diameter"                                                                                                     );
-    option.addOption("-K",                  "Number of classes needed to classify!!!!! please use Uppercase —K instead of lowercase -k !!!!!"                       );
+    option.addOption("-K",                  "Number of classes needed to classify!!!!! please use Uppercase —K instead of lowercase -k !!!!!" 						);
     option.addOption("-iter",               "Maximum number of iterations to perform"                                                                               );
-    option.addOption("-angpix",             "Pixel size (in Angstroms)!!!!! please use -angpix instead of -pixel !!!!!"                                             );
+    option.addOption("-angpix",             "Pixel size (in Angstroms)!!!!! please use -angpix instead of -pixel !!!!!"									            );
     option.addOption("-ini_high",           "Resolution (in Angstroms) to which to limit refinement in the first iteration"                                         );
     option.addOption("-oversampling",       "Adaptive oversampling order to speed-up calculations (0=no oversampling, 1=2x, 2=4x, etc)"                             );
     option.addOption("-healpix_order",      "Healpix order for the angular sampling (before oversampling) on the (3D) sphere: hp2=15deg, hp3=7.5deg, etc"           );
-    option.addOption("-tau2_fudge",         "Regularisation parameter (values higher than 1 give more weight to the data,4 for 3D)"                                 );
+    option.addOption("-tau2_fudge",         "Regularisation parameter (values higher than 1 give more weight to the data)"                                          );
     option.addOption("-sym",                "Symmetry group"						                                                                                );
     // advanced option
     option.addOption("-pool",               "Particles processing together each EM expectation.",                                                              "50" );
@@ -58,24 +70,59 @@ int main(int argc, char * argv[]) {
     option.addOption("-norm",               "Perform normalisation-error correction?",                                                                         "0"  );
     option.addOption("-zero_mask",          "Mask surrounding background in particles to zero (by default the solvent area is filled with random noise)",      "0"  );
     option.addOption("-flatten_solvent",    "Perform masking on the references as well?",                                                                      "0"  );
+    option.addOption("-solvent_mask", 		"User-provided mask for the references (default is to use spherical mask with particle_diameter)",				  "NULL");
     option.addOption("-no_map",             "Do not use map estimitor",                                                                                        "0"  );
-    //
-    //option.addOption("-datastream_in", 		"data stream for comparing",																					  "NULL");
-    //option.addOption("-datastream_out", 	"write data stream to file",																					  "NULL");
-    option.addOption("-continue",        	"continue work from specified file.( from *_optimiser.star or *_backup.back file)",    						   	  "NULL");
-    //
+    option.addOption("-sigma_ang", 			"Stddev on all three Euler angles for local angular searches (of +/- 3 stddev)",								   "0"	);
+    
+    option.addOption("-datastream_in", 		"data stream for comparing",																					  "NULL");
+    option.addOption("-datastream_out", 	"write data stream to file",																					  "NULL");
+    option.addOption("-testguidance",       "keep each iteration same as guidefile(use 'BACK' to backup the data)",     									  "NULL");
+    option.addOption("-debug",     			"print out debug info",                                                                                       		""  );
+    
+	option.addOption("-checker_goSerial",	"When to force serial execution - used for debugging nondeterminism", "");
+	option.addOption("-checker_goParallel", "When to return to parallel execution - used for debugging nondeterminism", "");
+	option.addOption("-checker_i",          "File to compare against",                                                                                         ""   );
+    option.addOption("-checker_o",          "File to write for future comparisons",                                                                            ""   );
+    option.addOption("-checker_test",       "The string describing the test being measured",                                                 "default_checker_test" );
+    option.addOption("-checker_ftrace",     "File to write an ftrace to",                                                                                       ""  );
+    
+
+    
     if (argc < 3) {
         option.printHelp();
-        std::cerr << "example : " << std::endl;
-        std::cerr << "../bin/rome_map3d -i class19.star -ref ring250.mrc -particle_diameter 430 -angpix 1.72  -K 2 -o class19_map3d -ini_high 60 "<<std::endl;
-        std::cerr << "-iter 25 -offset_range 6 -offset_step 2 -oversampling 1 -healpix_order 2 -pool 8 -tau2_fudge 1.5 -sym C1 "<<std::endl;
-        std::cerr << "--zero_mask -flatten_solvent -norm -scale -firstiter_cc -ctf"<< std::endl;
+        std::cerr << "example:" << std::endl;
+        std::cerr << "./bin/rome_map3d -i dataset/class19.star -o dataset/class19_ml2d -K 10 -iter 30 -angpix 1.74 > dataset/ml2d_output.txt" << std::endl;
         std::cerr << std::endl;
-        exit(1);
+		EXIT_ABNORMALLY;
     }
     
     option.readCommandLine(argc, argv);
-    
+
+	std::string optionInclude = option.getStrOption("-@");
+	if (optionInclude != "NULL") {
+		option.readIncludeFile(optionInclude);
+	}
+
+	std::string checker_goSerial   = option.getStrOption("-checker_goSerial");
+	std::string checker_goParallel = option.getStrOption("-checker_goParallel");
+	if (checker_goSerial  .size() > 0) setGoSerial  (checker_goSerial);
+	if (checker_goParallel.size() > 0) setGoParallel(checker_goParallel);
+	maybeGoSerial("immediately");
+
+    std::string checker_i_fn		=   option.getStrOption("-checker_i");
+    std::string checker_o_fn		=   option.getStrOption("-checker_o");
+    std::string checker_test		=   option.getStrOption("-checker_test");
+	std::string checker_ftrace		=   option.getStrOption("-checker_ftrace");
+	Checker::Benchmark* benchmark = nullptr;
+	if (checker_i_fn.size() > 0 || checker_o_fn.size() > 0) {
+		benchmark = sNew(Checker::Benchmark);
+		benchmark->setFiles(checker_i_fn, checker_o_fn);
+		benchmark->setDefaultColumnHeader(checker_test);
+	}
+	if (checker_ftrace.size() > 0) {
+		Checker::setFtraceFile(checker_ftrace);
+	}
+
 #ifdef USEMPI
     MPI::Init();
     if(MPI::COMM_WORLD.Get_rank()  == 0)
@@ -90,43 +137,47 @@ int main(int argc, char * argv[]) {
     std::string output_fn           =   pathRemoveSuffix(option.getStrOption("-o"));
     
     // set parameters
-    Map3dOptimizer::star_fn                	=   set_star_fn;
-    Map3dOptimizer::write_path             	=   pathGetDir(output_fn);
-    Map3dOptimizer::write_fn               	=   pathGetFilename(output_fn);
-    Map3dOptimizer::ref_fn                 	=   option.getStrOption("-ref");
-    Map3dOptimizer::nr_classes             	=   option.getIntOption("-K");
-    Map3dOptimizer::nr_pool                	=   option.getIntOption("-pool");
-    Map3dOptimizer::pixel_size             	=   option.getFloatOption("-angpix");
-    Map3dOptimizer::nr_iter                	=   option.getIntOption("-iter");
-    Map3dOptimizer::random_seed            	=   option.getIntOption("-random_seed");
-    Map3dOptimizer::offset_step            	=   option.getIntOption("-offset_step");
-    Map3dOptimizer::offset_range           	=   option.getIntOption("-offset_range");
-    //
-    Map3dOptimizer::do_ctf_correction 	   	=   option.getBoolOption("-ctf");
-    Map3dOptimizer::only_flip_phases		=   option.getBoolOption("-only_flip_phases");
-    Map3dOptimizer::ctf_phase_flipped		=   option.getBoolOption("-ctf_phase_flipped");
-    Map3dOptimizer::refs_are_ctf_corrected 	=   option.getBoolOption("-ctf_corrected_ref");
-    Map3dOptimizer::intact_ctf_first_peak	=   option.getBoolOption("-intact_ctf_first_peak");
-    //
-    Map3dOptimizer::ini_high               	=   option.getFloatOption("-ini_high");
-    Map3dOptimizer::adaptive_oversampling  	=   option.getIntOption("-oversampling");
-    Map3dOptimizer::sampler3d_healpix_order =   option.getIntOption("-healpix_order");
-    Map3dOptimizer::tau2_fudge_factor      	=   option.getFloatOption("-tau2_fudge");
-    Map3dOptimizer::sampler3d_fn_sym        =   option.getStrOption("-sym");
-    Map3dOptimizer::particle_diameter      	=   option.getFloatOption("-particle_diameter");
-    Map3dOptimizer::do_firstiter_cc         =   option.getBoolOption("-firstiter_cc");
-    Map3dOptimizer::do_always_cc           	=   option.getBoolOption("-always_cc");
-    Map3dOptimizer::do_scale_correction    	=   option.getBoolOption("-scale");
-    Map3dOptimizer::do_norm_correction     	=   option.getBoolOption("-norm");
-    Map3dOptimizer::do_zero_mask           	=   option.getBoolOption("-zero_mask");
+    Map3dOptimizer::star_fn					=   set_star_fn;
+    Map3dOptimizer::write_path				=   pathGetDir(output_fn);
+    Map3dOptimizer::write_fn				=   pathGetFilename(output_fn);
+    Map3dOptimizer::ref_fn					=   option.getStrOption("-ref");
+    Map3dOptimizer::nr_classes				=   option.getIntOption("-K");
+    Map3dOptimizer::nr_pool					=   option.getIntOption("-pool");
+    Map3dOptimizer::pixel_size				=   option.getFloatOption("-angpix");
+    Map3dOptimizer::nr_iter					=   option.getIntOption("-iter");
+    Map3dOptimizer::random_seed				=   option.getIntOption("-random_seed");
+    Map3dOptimizer::offset_step				=   option.getIntOption("-offset_step");
+    Map3dOptimizer::offset_range			=   option.getIntOption("-offset_range");
+    
+    Map3dOptimizer::do_ctf_correction		=   option.getBoolOption("-ctf");
+    Map3dOptimizer::only_flip_phases		=	option.getBoolOption("-only_flip_phases");
+    Map3dOptimizer::ctf_phase_flipped		=	option.getBoolOption("-ctf_phase_flipped");
+    Map3dOptimizer::refs_are_ctf_corrected	=	option.getBoolOption("-ctf_corrected_ref");
+    Map3dOptimizer::intact_ctf_first_peak	=	option.getBoolOption("-intact_ctf_first_peak");
+    
+    Map3dOptimizer::ini_high				=   option.getFloatOption("-ini_high");
+    Map3dOptimizer::adaptive_oversampling	=   option.getIntOption("-oversampling");
+    Map3dOptimizer::sampler3d_healpix_order	=   option.getIntOption("-healpix_order");
+    Map3dOptimizer::tau2_fudge_factor		=   option.getFloatOption("-tau2_fudge");
+    Map3dOptimizer::sampler3d_fn_sym		=   option.getStrOption("-sym");
+    Map3dOptimizer::particle_diameter		=   option.getFloatOption("-particle_diameter");
+    Map3dOptimizer::do_firstiter_cc			=   option.getBoolOption("-firstiter_cc");
+    Map3dOptimizer::do_always_cc			=   option.getBoolOption("-always_cc");
+    Map3dOptimizer::do_scale_correction		=   option.getBoolOption("-scale");
+    Map3dOptimizer::do_norm_correction		=   option.getBoolOption("-norm");
+    Map3dOptimizer::do_zero_mask			=   option.getBoolOption("-zero_mask");
     Map3dOptimizer::do_solvent             	=   option.getBoolOption("-flatten_solvent");
     Map3dOptimizer::do_map                 	=   !option.getBoolOption("-no_map");
+    Map3dOptimizer::sigma2_angle			=	option.getFloatOption("-sigma_ang");
+    Map3dOptimizer::mask_fn					=	option.getStrOption("-solvent_mask");
+    Map3dOptimizer::do_shifts_onthefly		=	true;
     
-    Map3dOptimizer::data_stream_in_fn		=	"NULL";//option.getStrOption("-datastream_in");
-    Map3dOptimizer::data_stream_out_fn		=	"NULL";//option.getStrOption("-datastream_out");
+    Map3dOptimizer::data_stream_in_fn		=	option.getStrOption("-datastream_in");
+    Map3dOptimizer::data_stream_out_fn		=	option.getStrOption("-datastream_out");
     Map3dOptimizer::continue_fn				=	option.getStrOption("-continue");
-    Map3dOptimizer::guidance_fn             =   "NULL";
-    //
+    Map3dOptimizer::guidance_fn       		=   option.getStrOption("-testguidance");
+    Map3dOptimizer::debug_flag				=	option.getBoolOption("-debug");
+    
     Map3dOptimizer::setupMLoptimizer();
     
     Map3dOptimizer::prepare();
@@ -134,13 +185,22 @@ int main(int argc, char * argv[]) {
     Map3dOptimizer::iterate();
     
     Map3dOptimizer::destroyMLoptimizer();
-    
+
     
     double t2 = dtime();
     
     if(Map3dOptimizer::node  == 0)
-        std::cout<<"ML2D costs : "<<(t2-t1)<<std::endl;
+        std::cout<<"ML2D costs : "<<(t2-t1)
+#ifdef DOUBLE_TRANSLATION
+			<< " using DOUBLE_TRANSLATION"
+#endif
+#ifdef TRIPLE_TRANSLATION
+			<< " using TRIPLE_TRANSLATION"
+#endif
+			<< std::endl;
     
+	if(benchmark) sDelete(benchmark);
+
 #ifdef USEMPI
     MPI::Finalize();
 #endif

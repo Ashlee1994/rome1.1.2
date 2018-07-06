@@ -1,7 +1,10 @@
 /***************************************************************************
  *
- * Authors: "Yongbei(Glow) Ma,Jiayi (Timmy) Wu, Youdong (Jack) Mao"
+ * Intel® Parallel Computing Center for Structural Biology
+ * Principal Investigator : Youdong (Jack) Mao (Youdong_Mao@dfci.harvard.edu)
  * Dana-Farber Cancer Institute, Harvard Medical School and Peking University
+ *
+ * Authors: "Yong Bei Ma(galowma@gmail.com) Jian Wang(wj_hust08@hust.edu.cn)"
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -21,10 +24,7 @@
 #ifndef STRING_H_
 #define STRING_H_
 
-#include <sstream>
-#include <regex>
-#include <algorithm>
-#include <string>
+#include "util.h"
 
 // remove the suffix of a path
 // example : ../Document/_iter10.star    ==> ./root/Document/_iter10
@@ -73,8 +73,6 @@ std::string strMerge(Strs_ && ...strs) {
     stream_push(stream, strs...);
     return stream.str();
 }
-
-#define DIE(...) do {std::cerr << strMerge(__VA_ARGS__) << std::endl; std::exit(1);} while(0)
 
 namespace os { namespace path {
 

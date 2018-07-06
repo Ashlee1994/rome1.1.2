@@ -207,19 +207,21 @@ public:
     VectorOfStruct(int size) : VectorOfSingle<T>(size) { init(size); }
     
     ~VectorOfStruct() {
-        if (this->_capacity > 0) { delete [] died(this->_ptr); this->_capacity = 0; }
+        if (this->_capacity > 0) {	// == 0 when ctr with a vector<T>
+			vDelete(this->_ptr); this->_capacity = 0; 
+		}
         this->_size = 0;
-        this->_ptr = nullptr;
+        this->_ptr  = nullptr;
     }
     
     void init(size_t size) {											// not resize because the values are not kept
         if (size == 0 || size > this->_capacity) {
-            if (this->_capacity > 0) delete [] died(this->_ptr);		// == 0 when ctr with a vector<T>
+            if (this->_capacity > 0) vDelete(this->_ptr);					// == 0 when ctr with a vector<T>
             this->_size = this->_capacity = 0;
         }
         if (this->_capacity < size) {
             this->_capacity = size;
-            this->_ptr = born(new Elt[this->_capacity]);
+            this->_ptr = vNew(Elt,this->_capacity);
         }
         this->_size = size;
         this->_written = true;												// assumes structs are constructed
@@ -283,6 +285,32 @@ public:
 #pragma omp parallel for
         for(int i = 0;i < (*this).size();i++) {
             (*this)[i].fill(with);
+        }
+    }
+};
+
+template<typename T>
+class VectorOfArray3d : public std::vector< std::vector< VectorOfScalar<T> > >,NoCopy {
+public:
+    VectorOfArray3d(){} ~VectorOfArray3d(){fini();}
+    void init(int nr_array2d,int size,int length){
+		std::vector< std::vector< VectorOfScalar<T> > >::resize(nr_array2d);
+        for (int n = 0 ; n < nr_array2d; n++) {
+            (*this)[n].resize(size);
+            for(int i = 0;i < size;i++) (*this)[n][i].init(length);
+        }
+    }
+    void fini(){std::vector< std::vector< VectorOfScalar<T> > >::resize(0);}
+    void fill(T with){
+        for(int n = 0;n < (*this).size();n++)
+            for (int i = 0; i < (*this)[n].size(); i++)
+                (*this)[n][i].fill(with);
+    }
+    void fill_with_first_touch(double with){
+#pragma omp parallel for
+        for(int n = 0;n < (*this).size();n++){
+            for (int i = 0; i < (*this)[n].size(); i++)
+                (*this)[n][i].fill(with);
         }
     }
 };
