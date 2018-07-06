@@ -33,9 +33,9 @@ static size_t populationCount;
 
 static omp_lock_t* _debug_lock;
 static void acqDebugLock() {
-#include "./util_heap_undefs.h"
+#include "./resmap_util_heap_undefs.h"
 	if (!_debug_lock) omp_init_lock(_debug_lock = new omp_lock_t);
-#include "./util_heap_defs.h"
+#include "./resmap_util_heap_defs.h"
 	omp_set_lock(_debug_lock);
 }
 static void relDebugLock() {

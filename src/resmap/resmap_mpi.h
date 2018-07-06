@@ -39,9 +39,9 @@
 //#define USEMPI
 
 #ifdef USEMPI
-#include "./util_heap_undefs.h"
+#include "./resmap_util_heap_undefs.h"
 #include <mpi.h>
-#include "./util_heap_defs.h"
+#include "./resmap_util_heap_defs.h"
 #endif
 
 
