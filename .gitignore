@@ -8,3 +8,6 @@ Windows/
 testdata_2d/
 testdata_3d/
 Makefile_NoMPI_NoOffload
+bin/
+src_bak/
+build/

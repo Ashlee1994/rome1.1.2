@@ -22,8 +22,9 @@
 
 #include "../src/gtm_optimizer.h"
 #include "../src/option.h"
-#include "../src/map2d_optimizer.h"
+//#include "../src/map2d_optimizer.h"
 
+/*
 void MLProgram() {
     
     Map2dOptimizer::setupMap2dOptimizer();
@@ -33,7 +34,7 @@ void MLProgram() {
     Map2dOptimizer::writeClassesAndMetadata();
     Map2dOptimizer::destroyMap2dOptimizer();
     
-}
+}*/
 
 #include "../src/map2d_optimizer_old.h"
 

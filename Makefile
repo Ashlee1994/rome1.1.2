@@ -41,10 +41,10 @@ endif
 TBB		  := 
 
 SRC_DIR   := src
-RELION_DIR:= relion_src
 HEALPIX_DIR:= Healpix_2.15a
 APPS_DIR  := apps#$(MODULES) #$(addprefix ./,$(MODULES))
-BUILD_DIR := $(addprefix build/,$(SRC_DIR) $(APPS_DIR) $(HEALPIX_DIR) $(RELION_DIR))
+RESMAP_DIR := src/resmap
+BUILD_DIR := $(addprefix build/,$(SRC_DIR) $(APPS_DIR) $(HEALPIX_DIR) $(RESMAP_DIR))
 
 # src files include map2d and gtm and other code.
 SRC_CPP   := $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/*.cpp))
@@ -52,13 +52,9 @@ HEALPIX_CC:= $(foreach sdir,$(HEALPIX_DIR),$(wildcard $(sdir)/*.cc))
 MAP2D_CPP := $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/map2d_*.cpp))
 MAP2D_OLD_CPP := $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/map2d_*_old.cpp))
 MAP3D_CPP := $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/map3d_*.cpp))
+RESMAP_CPP := $(foreach sdir,$(RESMAP_DIR), $(wildcard $(sdir)/*.cpp))
 GTM_CPP   := $(foreach sdir,$(SRC_DIR),$(wildcard $(sdir)/gtm_*.cpp))
 OTHER_CPP := $(filter-out $(MAP2D_CPP) $(MAP2D_OLD_CPP) $(MAP3D_CPP) $(GTM_CPP),$(SRC_CPP))
-
-# RELION
-RELION_CPP:= $(foreach sdir,$(RELION_DIR),$(wildcard $(sdir)/*.cpp))
-RELION_MPI_CPP:= $(foreach sdir,$(RELION_DIR),$(wildcard $(sdir)/*mpi*.cpp))
-RELINE_NOMPI_CPP:= $(filter-out $(RELION_MPI_CPP),$(RELION_CPP))
 
 # rome_gtm,rome_map2d,rome_tool application 
 APPS_CPP  := $(foreach sdir,$(APPS_DIR),$(wildcard $(sdir)/*.cpp))
@@ -68,24 +64,20 @@ MAP2D_OBJ := $(patsubst %.cpp,build/%.o,$(MAP2D_CPP))
 MAP2D_OLD_OBJ := $(patsubst %.cpp,build/%.o,$(MAP2D_OLD_CPP))
 MAP3D_OBJ := $(patsubst %.cpp,build/%.o,$(MAP3D_CPP))
 GTM_OBJ   := $(patsubst %.cpp,build/%.o,$(GTM_CPP))
+RESMAP_OBJ := $(patsubst %.cpp,build/%.o,$(RESMAP_CPP))
 OTHER_OBJ := $(patsubst %.cpp,build/%.o,$(OTHER_CPP))
 
 HEALPIX_OBJ:=$(patsubst %.cc,build/%.o,$(HEALPIX_CC))
-
-# RELION
-RELION_OBJ:=$(patsubst %.cpp,build/%.o,$(RELION_CPP))
-RELION_MPI_OBJ:=$(patsubst %.cpp,build/%.o,$(RELION_MPI_CPP))
-RELION_NOMPI_OBJ:=$(patsubst %.cpp,build/%.o,$(RELINE_NOMPI_CPP))
 
 APPS_OBJ  := $(patsubst %.cpp,build/%.o,$(APPS_CPP))
 APPS      := $(patsubst %.cpp,%,$(APPS_CPP))
 APPS      := $(notdir $(APPS))
 
-REOM_OBJ  := $(SRC_OBJ) $(HEALPIX_OBJ)
+REOM_OBJ  := $(SRC_OBJ) $(HEALPIX_OBJ) 
 
-ALL_APPS  := rome_map2d rome_map2d_old rome_sml rome_deep2d rome_tool rome_map3d rome_map3d_old rome_autorefine rome_reconstruct relion_refine relion_refine_mpi relion_reconstruct
+ALL_APPS  := rome_map2d_old rome_sml rome_deep2d rome_tool rome_map3d_old rome_reconstruct rome_res
 
-vpath %.cpp $(SRC_DIR) $(APPS_DIR) $(RELION_DIR)
+vpath %.cpp $(SRC_DIR) $(APPS_DIR) $(RESMAP_DIR)
 vpath %.cc $(HEALPIX_DIR)
 
 define make-goal
@@ -99,20 +91,14 @@ endef
 
 all: $(ALL_APPS)
 
+rome_res: checkdirs $(REOM_OBJ) $(RESMAP_OBJ) build/$(APPS_DIR)/rome_res.o
+	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(RESMAP_OBJ) $(HEALPIX_OBJ) -o bin/$@
+
 rome_sml: checkdirs $(REOM_OBJ) build/$(APPS_DIR)/rome_sml.o
 	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(GTM_OBJ) $(OTHER_OBJ) $(HEALPIX_OBJ) -o bin/$@
 
-rome_map2d: checkdirs $(REOM_OBJ) build/$(APPS_DIR)/rome_map2d.o
-	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(MAP2D_OBJ) $(GTM_OBJ) $(OTHER_OBJ) $(HEALPIX_OBJ) -o bin/$@
-
 rome_map2d_old: checkdirs $(REOM_OBJ) build/$(APPS_DIR)/rome_map2d_old.o
 	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(MAP2D_OLD_OBJ) $(OTHER_OBJ) $(HEALPIX_OBJ) -o bin/$@
-
-rome_map3d: checkdirs $(REOM_OBJ) build/$(APPS_DIR)/rome_map3d.o
-	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(MAP3D_OBJ) $(OTHER_OBJ) $(HEALPIX_OBJ) -o bin/$@
-
-rome_autorefine: checkdirs $(REOM_OBJ) build/$(APPS_DIR)/rome_autorefine.o
-	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(MAP3D_OBJ) $(OTHER_OBJ) $(HEALPIX_OBJ) -o bin/$@
 
 rome_map3d_old: checkdirs $(REOM_OBJ) build/$(APPS_DIR)/rome_map3d_old.o
 	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(MAP3D_OBJ) $(OTHER_OBJ) $(HEALPIX_OBJ) -o bin/$@
