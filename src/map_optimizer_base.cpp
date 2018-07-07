@@ -20,7 +20,7 @@
 
 #include "util.h"		// used for building precompiled headers on Windows
 
-#include "map_optimizer_base_old.h"
+#include "map_optimizer_base.h"
 
 namespace MapOptimizerBase_old
 {

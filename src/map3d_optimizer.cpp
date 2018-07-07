@@ -21,7 +21,7 @@
 
 #include "util.h"		// used for building precompiled headers on Windows
 
-#include "./map3d_optimizer_old.h"
+#include "./map3d_optimizer.h"
 
 namespace Map3dOptimizer_old {
     //

@@ -17,7 +17,7 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
-#include "./map2d_optimizer_old.h"
+#include "./map2d_optimizer.h"
 
 namespace Map2dOptimizer_old {
     

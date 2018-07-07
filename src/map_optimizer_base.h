@@ -43,8 +43,8 @@
 #include "./progressbar.h"
 #include "./statusTracer.h"
 
+//#include "./exp_mweight.h"
 #include "./exp_mweight.h"
-#include "./exp_mweight_old.h"
 
 namespace MapOptimizerBase_old
 {

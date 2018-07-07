@@ -17,39 +17,41 @@
  * source code. Additional authorship citations may be added, but existing
  * author citations must be preserved.
  ***************************************************************************/
-#ifndef MAP2D_OPTIMIZER_OLD_H_
-#define MAP2D_OPTIMIZER_OLD_H_
+#ifndef MAP3D_OPTIMIZER_OLD_H_
+#define MAP3D_OPTIMIZER_OLD_H_
 
-#include "./map_optimizer_base_old.h"
+// #include "tbb/parallel_sort.h"
+#include "./map_optimizer_base.h"
 
-namespace Map2dOptimizer_old
+namespace Map3dOptimizer_old
 {
     using namespace MapOptimizerBase_old;
     
     // model
-    extern HealpixSampler sampler2d;
+    extern HealpixSampler sampler3d;
     extern MAPModel mapModel;
     extern MLModel mlModel;
     extern ParticleModel particleModel;
     extern HiddenVariableMonitor hiddenVarMonitor;
     
     // image data
-    extern Images images;
+    extern Images images_data;
     extern MetaDataTable metadata;
-	
+    
     // sampling
     extern double offset_step;
     extern double offset_range;
-    extern double psi_step;
+    extern int sampler3d_healpix_order;
+    extern std::string sampler3d_fn_sym;
     extern SamplingGrid samplingGrid;
     
-	// ------------ link  some variable ------------- //
-	static auto& particle_diameter = particleModel.particle_diameter;
+    // ------------ link  some variable ------------- //
+    static auto& particle_diameter = particleModel.particle_diameter;
     static auto& only_flip_phases = particleModel.only_flip_phases;
     static auto& ctf_phase_flipped = particleModel.ctf_phase_flipped;
     static auto& intact_ctf_first_peak = particleModel.intact_ctf_first_peak;
-    
-    // ------------ variable for expectation step -------------- //
+        
+    // ------------ variable for expectation step  ------------- //
 #define SEP
 #define ELTONE(T,N,S1,S2) extern T N;
 #define ELTVE1(T,N,S1,S2) extern VectorOfArray1d<T> N;
@@ -65,65 +67,58 @@ namespace Map2dOptimizer_old
     //
     extern VectorOfStruct<MetaDataElem> exp_metadata;
     //
-    extern Aligned3dArray<FDOUBLE> exp_Fimgs_shifted_real;
-    extern Aligned3dArray<FDOUBLE> exp_Fimgs_shifted_imag;
-    extern Aligned3dArray<FDOUBLE> exp_Frefs_Rot_real;
-    extern Aligned3dArray<FDOUBLE> exp_Frefs_Rot_imag;
-    extern Aligned3dArray<FDOUBLE> exp_Fweight_Rot;
-    
-    // metadata of the weight,structure is iclass->rot->iover_rot->trans->iover_trans
-    extern double* exp_Mweight;
-    extern int exp_Mweight_xsize;
-    
-    // ------------ thread variable ----------------- //
-    extern Aligned2dArray<FDOUBLE> thread_Frefctf_real;
-    extern Aligned2dArray<FDOUBLE> thread_Frefctf_imag;
-    extern Aligned2dArray<FDOUBLE> thread_wsum_pdf_direction;
+    //
+    // ---------------   thread variable   ------------ //
+    extern Aligned3dArray<FDOUBLE> thread_Frefctf_real;
+    extern Aligned3dArray<FDOUBLE> thread_Frefctf_imag;
+    extern Aligned3dArray<FDOUBLE> thread_Fimg_real;
+    extern Aligned3dArray<FDOUBLE> thread_Fimg_imag;
+    extern Aligned3dArray<FDOUBLE> thread_Fweight;
+    extern Aligned3dArray<FDOUBLE> thread_wsum_pdf_direction;
+    extern Aligned2dArray< char > threadfake_do_scale_norm_class;
     extern std::vector<std::vector<GridIndex>> thread_exp_max_weight_index;
     
-    //
-    void readImages();
+    //  ---------------   setup      ---------------------- //
+    void setupMLoptimizer();
     
-    void setupMap2dOptimizer();
+    void destroyMLoptimizer();
     
-    void destroyMap2dOptimizer();
-
     // Interpret command line for the initial start of a run
     void prepare();
     
     // Perform expectation-maximization iterations
     void iterate();
     
-	// ------------   EM-Iteration     ----------------- //
-    
-	void expectation();
-    
-    // expectation nr_pool image each time
-    void expectationSomeParticles();
+    // ------------   EM-Iteration     ----------------- //
     
     // (de)allocate memory space for each expectation step
     void prepareExpData();
     void endExpData();
     
+    void expectation();
+    
+    // expectation nr_pool image each time
+    void expectationSomeParticles();
+    
     // ------------ some function in expectationsomeparticles functon    --------- //
     
     // get all rotated reference  and the significant rotation
     void getReferenceAllOrientations();
-
-	// get all reference and images 's squared differences
-	void getAllSquaredDifferences();
+    
+    // get all reference and images 's squared differences
+    void getAllSquaredDifferences(bool do_coarse_search);
     
     // calculates exp_sum_weight and, for adaptive approach, also exp_significant_weight
-    void findAllSignificantPoints();
+    void findAllSignificantPoints(Exp_Mweight_old& exp_Mweight);
     
-	// convert all squared difference to weight(P = exp(-x))
-	void convertSquaredDifferencesToWeights();
-
+    // convert all squared difference to weight(P = exp(-x))
+    void convertSquaredDifferencesToWeights(Exp_Mweight_old& exp_Mweight);
+    
     // calculate norm_correction,dLL and Pmax
     void storeWeightedSums();
     
-	// update other parameters for refine the model:norm_correction,sigma2_noise,pdf_class,pdf_direction,prior_offsetx(y)_class
-	void updateOtherParams();
+    // update mlModel
+    void updateOtherParams();
     
     // add all shifted and rotated images back
     void backProjection();
@@ -132,21 +127,22 @@ namespace Map2dOptimizer_old
     
     void maximization();
     
-    // Perform the actual reconstructions
-    void maximizationReconstructClass(int iclass);
-    
     // Updates all other model parameters (besides the reconstructions)
     void maximizationOtherParameters();
     
-    // ------------  Write files to disc     ------------- //
-
-    void writeClassesAndMetadata(std::string fn_class,std::string fn_metadata);
+    // ------------  read and Write files     ------------- //
+    
+    void readResult();
+    void writeAndCheckResult();
+    void printMem(int set_nr_pool);
     
     // ------------  some help function     ------------- //
+    
     inline bool isSignificantAnyParticleAnyTranslation(int iorient);
     
-    // --------------------------------------------------- //
-    void calspace(int ori_size,int current_size,int set_nr_pool);
+    //
+    // use StatusTracer to write data to disk
+    // to compare the different.....
     
 };
 
