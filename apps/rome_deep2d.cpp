@@ -36,7 +36,7 @@ void MLProgram() {
     
 }*/
 
-#include "../src/map2d_optimizer_old.h"
+#include "../src/map2d_optimizer.h"
 
 int main(int argc, char * argv[]) {
     
