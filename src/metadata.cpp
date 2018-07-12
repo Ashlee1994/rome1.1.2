@@ -361,7 +361,7 @@ void MetaDataTable::printTable(std::ostream& os, LabelStatus const & labelStatus
     int column_index = 0;
     // write out header
     os<<"\ndata_\n\nloop_\n";
-	int ScaleCorrection = 0;
+	int ScaleCorrection = -1;
     for (int i = 0; i < metadataLabelStatus.size(); i++){
         if (metadataLabelStatus[i] == true){
 			if (LabelParser::labelToString(MetaDataLabel(i)).compare("rlnScaleCorrection") == 0) {

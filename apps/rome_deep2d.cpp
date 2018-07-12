@@ -22,7 +22,7 @@
 
 #include "../src/gtm_optimizer.h"
 #include "../src/option.h"
-//#include "../src/map2d_optimizer.h"
+#include "../src/map2d_optimizer.h"
 
 /*
 void MLProgram() {
@@ -36,7 +36,7 @@ void MLProgram() {
     
 }*/
 
-#include "../src/map2d_optimizer.h"
+
 
 int main(int argc, char * argv[]) {
     
@@ -51,6 +51,9 @@ int main(int argc, char * argv[]) {
     option.addOption("-map2d_iter"			,"Maximum number of iterations to perform based on maximum likelihood method"    	);
     option.addOption("-sml_iter"			,"Maximum number of iterations to perform based on GTM"                          	);
     option.addOption("-angpix"				,"Pixel size (in Angstroms)!!!!! please use -angpix instead of -pixel !!!!!" 		);
+    // add some options
+    option.addOption("-tau2_fudge",         "Regularisation parameter (values higher than 1 give more weight to the data,2 for 2D)"                                 );
+    option.addOption("-particle_diameter"   ,"Particle diameter"                                                        ,"-1"   );
     // advanced option
     option.addOption("-dimension"			,"GTM sampling grid dimension(Default 1)"									,"1"  	);
     option.addOption("-pca"					,"Using PCA to initialize,(Defalut is using Gauss-Circle template)"			,"0"  	);
@@ -107,6 +110,9 @@ int main(int argc, char * argv[]) {
     Map2dOptimizer_old::offset_step       	=   option.getIntOption("-offset_step");
     Map2dOptimizer_old::offset_range		=   option.getIntOption("-offset_range");
     Map2dOptimizer_old::psi_step          	=   option.getIntOption("-psi_step");
+    //add some option
+    Map2dOptimizer_old::particle_diameter   =   option.getIntOption("-particle_diameter");
+    Map2dOptimizer_old::tau2_fudge_factor   =   option.getFloatOption("-tau2_fudge");
     //
     Map2dOptimizer_old::do_ctf_correction 	=   option.getBoolOption("-ctf");
     Map2dOptimizer_old::only_flip_phases	=	option.getBoolOption("-only_flip_phases");
@@ -138,11 +144,13 @@ int main(int argc, char * argv[]) {
     if(Map2dOptimizer_old::node == 0)
         std::cout<<"ML2D costs : "<<(t2-t1)<<std::endl;
     
+
 #ifdef USEMPI
     MPI::COMM_WORLD.Barrier();
 #endif
     
     //--------- GTM main program  ------------//
+    
     
     int set_sampling_dim            = option.getIntOption("-dimension");
     if (set_sampling_dim > 3 || set_sampling_dim < 1) {std::cerr<<"Wrong sampling dimension."<<std::endl;EXIT_ABNORMALLY;}
@@ -161,6 +169,7 @@ int main(int argc, char * argv[]) {
         while (getline(ss, item, delim)) elems.push_back(atoi(item.c_str()));
         return elems;
     };
+    
     double X_infos[9] = {0};
     double Mu_infos[9] = {0};
     int M = 0;
@@ -193,8 +202,7 @@ int main(int argc, char * argv[]) {
         default:
             break;
     }
-    
-    std::string set_star_fn             = 	pathRemoveSuffix(option.getStrOption("-o"))+"_map2d_iter"+num2str(option.getIntOption("-map2d_iter"))+".star";
+    std::string set_star_fn             = 	pathRemoveSuffix(option.getStrOption("-o"))+"_iter"+num2str(option.getIntOption("-map2d_iter"))+".star";
     std::string set_result_fn       	= 	pathRemoveSuffix(option.getStrOption("-o"))+"_sml";
     GTMoptimizer::star_fn				=	set_star_fn;
     GTMoptimizer::result_fn				=	set_result_fn;
@@ -212,10 +220,16 @@ int main(int argc, char * argv[]) {
     
     t1 = dtime();
     
+    std::cout<<"star file is "<<set_star_fn<<std::endl;
+    std::cout<<"we have run here 1!"<<std::endl;
+    
     GTMoptimizer::setupGTMoptimizer(X_infos,Mu_infos,set_sampling_dim);
+    
+    std::cout<<"we have run here 2!"<<std::endl;
     
     GTMoptimizer::run(set_precision,probThreshold,set_alpha,set_update_beta);
     
+    std::cout<<"we have run here 3!"<<std::endl;
     GTMoptimizer::destroyGTMoptimizer();
     
     
