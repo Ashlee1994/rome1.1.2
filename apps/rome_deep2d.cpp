@@ -125,6 +125,8 @@ int main(int argc, char * argv[]) {
     
     Map2dOptimizer_old::setupMap2dOptimizer();
     
+    Map2dOptimizer_old::readImages();
+
     Map2dOptimizer_old::prepare();
     
     Map2dOptimizer_old::iterate();
