@@ -20,7 +20,7 @@
 
 // #include "util.h"		// used for building precompiled headers on Windows
 
-#include "spider_old.h"
+#include "spider_dep.h"
 
 void spider_fq_q(float *data,int NX,int NY,double filter)
 {

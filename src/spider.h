@@ -27,7 +27,7 @@
 
 #include "mrcs.h"
 #include "error.h"
-#include "spider_old.h"
+#include "spider_dep.h"
 
 namespace Spider{
     // spider *.dat header,from : http://spider.wadsworth.org/spider_doc/spider/docs/image_doc.html

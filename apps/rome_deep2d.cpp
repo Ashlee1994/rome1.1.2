@@ -220,16 +220,10 @@ int main(int argc, char * argv[]) {
     
     t1 = dtime();
     
-    std::cout<<"star file is "<<set_star_fn<<std::endl;
-    std::cout<<"we have run here 1!"<<std::endl;
-    
     GTMoptimizer::setupGTMoptimizer(X_infos,Mu_infos,set_sampling_dim);
-    
-    std::cout<<"we have run here 2!"<<std::endl;
     
     GTMoptimizer::run(set_precision,probThreshold,set_alpha,set_update_beta);
     
-    std::cout<<"we have run here 3!"<<std::endl;
     GTMoptimizer::destroyGTMoptimizer();
     
     
