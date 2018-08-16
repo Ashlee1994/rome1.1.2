@@ -62,12 +62,12 @@ private:
         if (MPI_IS_ROOT)
         {
             std::cout << "#### single volume mode" << std::endl;
-            std::cout << " ./bin/rome -res -i <MRC_FILENAME> [-minRes <MINIMUM_RESOLUTION>] ";
+            std::cout << " ./bin/rome_res -res -i <MRC_FILENAME> [-minRes <MINIMUM_RESOLUTION>] ";
             std::cout << "[-maxRes <MAX_RESOLUTION>] [-stepRes <STEP_OF_RESOLUTION>] " <<std::endl;
             std::cout << "example1 : ./bin/rome_res -res -i dataset/single-100.mrc " <<std::endl;
             std::cout << "example2 : ./bin/rome_res -res -i dataset/single-100.mrc -minRes 5 -maxRes 15 -stepRes 1.0 "<<std::endl;
             std::cout << "#### split volumes mode" << std::endl;
-            std::cout << "./bin/rome -res -i1 <MRC_FILENAME1> -i2 <MRC_FILENAME2> [-minRes <MINIMUM_RESOLUTION>] ";
+            std::cout << "./bin/rome_res -res -i1 <MRC_FILENAME1> -i2 <MRC_FILENAME2> [-minRes <MINIMUM_RESOLUTION>] ";
             std::cout << "[-maxRes <MAX_RESOLUTION>] [-stepRes <STEP_OF_RESOLUTION>]" <<std::endl;
             std::cout << "example1 : ./bin/rome_res -res -i1 dataset/split1-100.mrc -i2 dataset/split2-100.mrc "<<std::endl;
             std::cout << "example2 : ./bin/rome_res -res -i1 dataset/split1-100.mrc -i2 dataset/split2-100.mrc -minRes 10 -maxRes 20 -stepRes 1.0"<<std::endl;

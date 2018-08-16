@@ -364,7 +364,6 @@ inline std::ostream& operator<<(std::ostream& os, MetaName const & rhs) {os<<num
     ELTDOU(FDOUBLE     , FOURIERSHELLCORRELATIONCORRECTED, 0.0       , FourierShellCorrelationCorrected ) SEP \
     ELTDOU(FDOUBLE     , FOURIERSHELLCORRELATIONMASKEDMAPS, 0.0       , FourierShellCorrelationMaskedMaps ) SEP \
     ELTDOU(FDOUBLE     , FOURIERSHELLCORRELATIONUNMASKEDMAPS, 0.0       , FourierShellCorrelationUnmaskedMaps ) SEP \
-	/* bug here */ \
 	ELTDOU(FDOUBLE     , CORRECTEDFOURIERSHELLCORRELATIONPHASERANDOMIZEDMASKEDMAPS, 0.0       , CorrectedFourierShellCorrelationPhaseRandomizedMaskedMaps ) SEP \
     ELTDOU(FDOUBLE     , AMPLITUDECORRELATIONMASKEDMAPS, 0.0       , AmplitudeCorrelationMaskedMaps ) SEP \
     ELTDOU(FDOUBLE     , AMPLITUDECORRELATIONUNMASKEDMAPS, 0.0       , AmplitudeCorrelationUnmaskedMaps ) SEP \
@@ -402,7 +401,9 @@ inline std::ostream& operator<<(std::ostream& os, MetaName const & rhs) {os<<num
     ELTDOU(FDOUBLE     , PERFRAMERELATIVEWEIGHT, 0.0       , PerFrameRelativeWeight       ) SEP \
     ELTDOU(FDOUBLE     , RESOLUTION         , 0.0       , Resolution                   ) SEP \
     ELTDOU(FDOUBLE     , ANGSTROMRESOLUTION , 0.0       , AngstromResolution           ) SEP \
-    ELTDOU(FDOUBLE     , RESOLUTIONINVERSEPIXEL, 0.0       , ResolutionInversePixel       ) SEP \
+    ELTDOU(FDOUBLE     , RESOLUTIONINVERSEPIXEL, 0.0       , ResolutionInversePixel    ) SEP \
+	ELTSTR(std::string , COMMENT            , ""        , comment                      ) SEP \
+	ELTSTR(std::string , AREAID             , ""        , AreaId                       ) SEP \
     ELTINT(int         , SPECTRALINDEX      , 0         , SpectralIndex                )
 
 
