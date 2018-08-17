@@ -62,7 +62,7 @@ int rome_res(int argc, char **argv)
     option.addOption("-vxSize"          , "voxcel size"         , "0.0"  );
     option.addOption("-pValue"          , "pValue"              , "0.05" );
     option.addOption("-minRes"          , "min resolution"      , "0.0"  );
-    option.addOption("-maxRes"          , "max resolution"      , "0.0"  );
+    option.addOption("-maxRes"          , "max resolution"      , "5.0"  );
     option.addOption("-stepRes"         , "step of resolution"  , "1.0"  );
     option.addOption("-variance"        , "variance"            , "0.0"  );
     // option.addOption("-noiseDiagnostics", "noise"               , "false");
