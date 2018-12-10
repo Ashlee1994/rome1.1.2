@@ -1,5 +1,3 @@
-https://bitbucket.org/
-    yongbei ma will invite you to join group ipccsb 
 
 Install git on your system
 
@@ -7,11 +5,8 @@ Create a repository on your system
 
     mkdir repos
     cd repos
-    git clone https://YOUR_BITBUCKET_USERNAME@bitbucket.org/ipccsb/rome1.1.git
+    git clone https://github.com/Ashlee1994/rome1.1.2.git
 
-
-Options built into the sources, change before building
-    See the top of map2d_optimizer_base.h
 
 To build
     Linux
@@ -20,10 +15,10 @@ To build
             source /opt/intel.2016/compilers_and_libraries/linux/bin/compilervars.csh intel64
 
         Change to the directory
-            cd ~/project/DanaFaber/repos/rome1.1 
+            cd rome1.1.2
 
         Make the build output directories
-        mkdir bin build build/apps build/src
+        mkdir bin 
         
         To build MAP:    
             One of
@@ -38,17 +33,10 @@ To build
                 g++ foo.o bar.o -ltbbmalloc_proxy -o a.out
 
         To build GTM:
-                make -kj4 rome_gtm
+                make -kj4 rome_sml
 
         To build both GTM and MAP:
                 make
-
-    Windows
-        Bevin has a working VS2015 Sln that uses Intel C++ 17.0
-		but it is in the wrong place until he fixes it
-            Open repos\ROME1.1\Windows\rome_map3d\rome_map3d.sln
-            Build Solution
-	    	This will build map2d and map3d
 
 
 To run
@@ -73,17 +61,6 @@ To run
             result file will be output at refine folder
             use diff to compare the output *.star file
             or _debug.txt to verify each step result.
-
-    Windows
-        map2d: The VS options Debug command line options could be:
-            -i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 5 -pool 30
-            -i ../../testdata_2d/data6/data6 -o NULL -k 4 -pixel 4. -iter 2 -pool 30 
-            -i ../../testdata_2d/data6/data6 -o NULL -k 3 -pixel 1.74 -iter 10 -pool 8
-            -i ../../syncplicity_dataset/N23D2dataset -o NULL -k 20 -pixel 4. -iter 3 -pool  30 
-			-i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 4 -pool 30 -ftrace ../../testdata_2d/data8_160/ftrace.txt 
-
-        map3d: The VS options Debug command line options could be:
-            -checker_ftrace c:\temp\rome3d_ftrace.txt -checker_o c:\temp\rome3d_benchmark.csv -checker_test desktop_pdh_debug_20160811a -i ../../testdata_3d/pdh/pdh.star -ref ../../testdata_3d/pdh/pdh_reference.mrc -particle_diameter 311 -pixel 3.11 -k 1 -o refine/pdh_rome -ini_high 60  -iter 10 -offset_range 8 -offset_step 2 -oversampling 1 -healpix_order 2 -random_seed 33 -pool 1 -tau2_fudge 4 -sym C1 --zero_mask -flatten_solvent -norm -scale -firstiter_cc
 
 	Checkpoint restart
 		-i ../../testdata_2d/data8_160/data8_160 -o ../../testdata_2d/data8_160/data8_160_output -k 20 -pixel 4. -iter 1 -pool 30 
@@ -131,8 +108,6 @@ To collect Amplifier data
         amplxe-gui r000hs1/*.amp* &
 
 To collect FTrace data
-    Windows
-        -i ../../testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 10 -pool 30 -checker_ftrace ../../testdata_2d/data8_160/ftrace.txt > ../../testdata_2d/data8_160/emit_test_output_stab.txt
     Linux
         rm -rf r000hs1 ; amplxe-cl -collect hotspots -r r000hs1 bin/rome_map2d -i testdata_2d/data8_160/data8_160 -o NULL -k 20 -pixel 4. -iter 10 -pool 30 -checker_ftrace testdata_2d/data8_160/ftrace.txt > testdata_2d/data8_160/emit_test_output_stab.txt
         amplxe-gui r000hs1/*.amp* &
