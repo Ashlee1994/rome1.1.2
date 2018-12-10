@@ -110,15 +110,6 @@ rome_deep2d: checkdirs $(REOM_OBJ) build/$(APPS_DIR)/rome_deep2d.o
 rome_reconstruct: checkdirs $(REOM_OBJ) build/$(APPS_DIR)/rome_reconstruct.o
 	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(OTHER_OBJ) $(HEALPIX_OBJ) -o bin/$@
 
-relion_refine: checkdirs $(RELION_NOMPI_OBJ) $(HEALPIX_OBJ) build/$(APPS_DIR)/relion_refine.o
-	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(RELION_NOMPI_OBJ) $(HEALPIX_OBJ) -o bin/$@
-
-relion_refine_mpi: checkdirs $(RELION_OBJ) $(HEALPIX_OBJ) build/$(APPS_DIR)/relion_refine_mpi.o
-	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(RELION_OBJ) $(HEALPIX_OBJ) -o bin/$@
-
-relion_reconstruct: checkdirs $(RELION_OBJ) $(HEALPIX_OBJ) build/$(APPS_DIR)/relion_reconstruct.o
-	$(LD) $(FLAGS) $(MACROS) $(OFFLOAD) build/$(APPS_DIR)/$@.o $(RELION_OBJ) $(HEALPIX_OBJ) -o bin/$@
-
 checkdirs: $(BUILD_DIR)
 
 $(BUILD_DIR):
